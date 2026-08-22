@@ -1,10 +1,10 @@
 {
   "name": "desktop-acon",
-  "productName": "A-con",
+  "productName": "Acon",
   "private": true,
   "version": "0.0.0",
-  "description": "A-con as a desktop application, built from the web app's own source.",
-  "author": "A-con",
+  "description": "Acon as a desktop application, built from the web app's own source.",
+  "author": "Acon",
   "main": "dist/main.cjs",
   "type": "module",
   "scripts": {

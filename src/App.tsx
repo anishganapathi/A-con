@@ -5,6 +5,7 @@ import { ExperienceScene } from "./components/ExperienceScene";
 import { Inspector } from "./components/Inspector";
 import { ModeSwitch } from "./components/ModeSwitch";
 import { Scene } from "./components/Scene";
+import { TitleBar } from "./components/TitleBar";
 import { ViewControls } from "./components/ViewControls";
 import { useLiquidGlass } from "./components/useLiquidGlass";
 import { ConstructionProvider } from "./editor/ConstructionContext";
@@ -57,40 +58,43 @@ function AppShell({
 
   return (
     <div className={experience ? "app app-experience" : "app"}>
-      <ModeSwitch mode={options.appMode} onChange={setMode} />
-      {experience ? (
-        <>
-          <ExperienceScene />
-          <aside className="experience-hud" aria-label="Experience">
-            <p className="view-kicker">Experience</p>
-            <h1>{floorPlan.name}</h1>
-            <p>{floorPlan.source.notes}</p>
-            <p>Plumbing stacks, laterals, and electrical risers are live in the model.</p>
-          </aside>
-          <ConstructionHud />
-          <ChatPanel />
-          <p className="experience-hint">Drag to explore · Scroll to zoom</p>
-        </>
-      ) : (
-        <>
-          <Scene options={options} />
-          <div className="left-rail">
-            <ViewControls
-              floorPlan={floorPlan}
-              options={options}
-              onChange={onOptionsChange}
-            />
-            <Inspector />
-          </div>
-          <ConstructionHud />
-          <ChatPanel />
-          <div className="sheet-block">
-            <span className="sheet-no">{floorPlan.source.sheet}</span>
-            <strong>{floorPlan.source.title}</strong>
-            <span>{floorPlan.source.notes}</span>
-          </div>
-        </>
-      )}
+      <TitleBar />
+      <div className="app-stage">
+        <ModeSwitch mode={options.appMode} onChange={setMode} />
+        {experience ? (
+          <>
+            <ExperienceScene />
+            <aside className="experience-hud" aria-label="Experience">
+              <p className="view-kicker">Experience</p>
+              <h1>{floorPlan.name}</h1>
+              <p>{floorPlan.source.notes}</p>
+              <p>Plumbing stacks, laterals, and electrical risers are live in the model.</p>
+            </aside>
+            <ConstructionHud />
+            <ChatPanel />
+            <p className="experience-hint">Drag to explore · Scroll to zoom</p>
+          </>
+        ) : (
+          <>
+            <Scene options={options} />
+            <div className="left-rail">
+              <ViewControls
+                floorPlan={floorPlan}
+                options={options}
+                onChange={onOptionsChange}
+              />
+              <Inspector />
+            </div>
+            <ConstructionHud />
+            <ChatPanel />
+            <div className="sheet-block">
+              <span className="sheet-no">{floorPlan.source.sheet}</span>
+              <strong>{floorPlan.source.title}</strong>
+              <span>{floorPlan.source.notes}</span>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

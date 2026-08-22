@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { loadDotEnv, mergeProcessEnv } from "./env.ts";
 import { startLocalServer, type LocalServer } from "./localServer.ts";
 import { runSmokeCheck } from "./smoke.ts";
+import { windowChrome } from "./windowChrome.ts";
 
 const RENDERER_ROOT = join(__dirname, "renderer");
 /** dist/main.cjs sits two levels under the repo, where the dev `.env` lives. */
@@ -10,7 +11,7 @@ const REPO_ROOT = join(__dirname, "..", "..");
 
 let server: LocalServer | null = null;
 
-app.setName("A-con");
+app.setName("Acon");
 
 // A second launch focuses the open window instead of starting a rival server.
 if (!app.requestSingleInstanceLock()) {
@@ -72,6 +73,12 @@ async function hostRenderer(): Promise<string> {
  * there is no repo to read, so the app's own data directory is the place to put
  * one, and it outranks anything shipped inside the bundle.
  */
+function appIconPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, "logo.png")
+    : join(REPO_ROOT, "public", "logo.png");
+}
+
 function readEnv(): Record<string, string> {
   const dirs = app.isPackaged
     ? [process.resourcesPath, app.getPath("userData")]
@@ -91,8 +98,10 @@ async function openWindow(url: string): Promise<BrowserWindow> {
     minHeight: 700,
     // Matches the app's page background so launch does not flash white.
     backgroundColor: "#dfe6ee",
-    title: "A-con",
+    title: "Acon",
+    icon: appIconPath(),
     show: false,
+    ...windowChrome(process.platform),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

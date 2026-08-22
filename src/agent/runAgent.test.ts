@@ -1,0 +1,59 @@
+import { describe, expect, test } from "vitest";
+import { mockFloorPlan } from "../data/mockFloorPlan";
+import { lockWorkspaceTurn, resolveAgentRole, runConstructionAgent } from "./runAgent";
+import type { AgentTurn } from "./types";
+
+describe("lock mode", () => {
+  test("routes construct and extract prompts to edit when locked", () => {
+    expect(resolveAgentRole("Build a 12×8 house", undefined, true)).toBe("edit");
+    expect(resolveAgentRole("Extract these sheets", [{ name: "a.pdf", type: "application/pdf", size: 1 }], true)).toBe(
+      "edit",
+    );
+  });
+
+  test("leaves unlocked construct prompts alone", () => {
+    expect(resolveAgentRole("Build a 12×8 house", undefined, false)).toBe("construct");
+  });
+
+  test("strips rebuilds and keeps patch actions", () => {
+    const turn: AgentTurn = {
+      agent: "construct",
+      planner: "llm",
+      reply: "Rebuilt the tower.",
+      draftSpec: { name: "New" } as AgentTurn["draftSpec"],
+      actions: [
+        { type: "replace_plan", plan: mockFloorPlan, note: "Rebuilt" },
+        { type: "patch_wall", wallId: "w1", patch: { thickness: 0.4 } },
+      ],
+    };
+
+    const locked = lockWorkspaceTurn(turn);
+    expect(locked.agent).toBe("edit");
+    expect(locked.draftSpec).toBeUndefined();
+    expect(locked.actions).toEqual([{ type: "patch_wall", wallId: "w1", patch: { thickness: 0.4 } }]);
+    expect(locked.reply).toMatch(/locked/i);
+  });
+
+  test("does not replace the live plan from a construct prompt", async () => {
+    const turn = await runConstructionAgent({
+      text: "Build a 20×12 two-story house",
+      plan: mockFloorPlan,
+      locked: true,
+    });
+
+    expect(turn.agent).toBe("edit");
+    expect(turn.draftSpec).toBeUndefined();
+    expect(turn.actions.some((action) => action.type === "replace_plan")).toBe(false);
+  });
+
+  test("still applies live edits while locked", async () => {
+    const turn = await runConstructionAgent({
+      text: "paint exterior walls warmer",
+      plan: mockFloorPlan,
+      locked: true,
+    });
+
+    expect(turn.actions.length).toBeGreaterThan(0);
+    expect(turn.actions.every((action) => action.type !== "replace_plan")).toBe(true);
+  });
+});

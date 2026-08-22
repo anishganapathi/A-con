@@ -1,5 +1,5 @@
 appId: com.acon.desktop
-productName: A-con
+productName: Acon
 directories:
   output: release
   buildResources: build
@@ -8,7 +8,11 @@ directories:
 files:
   - dist/**
   - package.json
+extraResources:
+  - from: ../public/logo.png
+    to: logo.png
 mac:
+  icon: ../public/logo.png
   category: public.app-category.graphics-design
   target:
     - target: dmg
@@ -16,7 +20,9 @@ mac:
         - arm64
         - x64
 win:
+  icon: ../public/logo.png
   target: nsis
 linux:
+  icon: ../public/logo.png
   target: AppImage
   category: Graphics

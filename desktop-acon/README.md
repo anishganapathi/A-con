@@ -1,6 +1,6 @@
 # desktop-acon
 
-A-con as a desktop application, built with Electron.
+Acon as a desktop application, built with Electron.
 
 This project holds **no copy of the app**. It builds `../src` with `../vite.config.ts`
 and serves `../server`'s agent API, so the desktop build and the web build cannot
@@ -48,9 +48,9 @@ Keys are read from the same `.env` the dev server reads.
 - **Development** — `../.env` in the repo, exactly as `npm run dev` does upstairs.
 - **Packaged** — `.env` in the app's data directory, which outranks anything
   shipped inside the bundle:
-  - macOS `~/Library/Application Support/A-con/.env`
-  - Windows `%APPDATA%\A-con\.env`
-  - Linux `~/.config/A-con/.env`
+  - macOS `~/Library/Application Support/Acon/.env`
+  - Windows `%APPDATA%\Acon\.env`
+  - Linux `~/.config/Acon/.env`
 
 Precedence matches Vite: `.env` < `.env.local` < `.env.<mode>` < `.env.<mode>.local`,
 and a real environment variable beats all of them. Without any key the app falls
