@@ -13,7 +13,9 @@ export function Scene({ options }: SceneProps) {
   const { floorPlan, select } = useEditor();
   const bounds = getPlanBounds(floorPlan);
   const ridge = floorPlan.roof.ridgeHeight;
-  const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 20);
+  // Towers are taller than they are wide, so height drives the framing.
+  const plateSpan = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 20);
+  const span = Math.max(plateSpan, ridge * 0.85);
   const target = useMemo<[number, number, number]>(
     () => [bounds.centerX, ridge * 0.38, bounds.centerZ],
     [bounds.centerX, bounds.centerZ, ridge],

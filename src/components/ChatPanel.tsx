@@ -12,10 +12,10 @@ import { useConstruction } from "../editor/ConstructionContext";
 import { useEditor } from "../editor/EditorContext";
 
 const STARTERS = [
+  "Build the Empire State Building",
+  "Build 233 Broadway, Manhattan",
   "Build a commercial space just like Walmart",
-  "Build a 12×8 two-story house with 2 bedrooms",
   "Add a waste pipe to the grocery area",
-  "What’s on the current plan?",
 ];
 
 export function ChatPanel() {

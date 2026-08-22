@@ -6,12 +6,20 @@ interface DatumLabelsProps {
   origin: [number, number, number];
 }
 
+/** A datum per floor becomes an unreadable ladder on a tower. */
+const MAX_DATUM_LABELS = 12;
+
 export function DatumLabels({ datums, origin }: DatumLabelsProps) {
   const sorted = [...datums].sort((a, b) => a.elevation - b.elevation);
   const top = sorted[sorted.length - 1];
   if (!top) {
     return null;
   }
+  const step = Math.max(1, Math.ceil(sorted.length / MAX_DATUM_LABELS));
+  const shown = sorted.filter(
+    (_, index) =>
+      index % step === 0 || index === 0 || index === sorted.length - 1,
+  );
 
   const [x, , z] = origin;
   const column: [number, number, number][] = [
@@ -22,7 +30,7 @@ export function DatumLabels({ datums, origin }: DatumLabelsProps) {
   return (
     <group>
       <Line points={column} color="#2c2c2c" lineWidth={1.25} />
-      {sorted.map((datum) => {
+      {shown.map((datum) => {
         const tick: [number, number, number][] = [
           [x - 0.22, datum.elevation, z],
           [x + 0.22, datum.elevation, z],

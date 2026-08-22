@@ -2,10 +2,14 @@ import type { Floor, FloorPlan, Opening, ViewOptions, Wall, WallSegment } from "
 import { useConstruction } from "../editor/ConstructionContext";
 import { DatumLabels } from "./DatumLabels";
 import { DimensionLabel } from "./DimensionLabel";
+import { FacadeGlazing } from "./FacadeGlazing";
 import { Room } from "./Room";
 import { StandingSeamRoof } from "./StandingSeamRoof";
 import { UtilityRun } from "./UtilityRun";
 import { Wall as WallMesh } from "./Wall";
+
+/** Above this floor count, room labels follow the active floor only. */
+const LABELLED_FLOOR_MAX = 4;
 
 interface BuildingModelProps {
   plan: FloorPlan;
@@ -19,6 +23,8 @@ export function BuildingModel({ plan, options }: BuildingModelProps) {
     : plan.floors.filter((floor) => floor.id === options.floorId);
   const bounds = getPlanBounds(plan);
   const lastFloor = plan.floors[plan.floors.length - 1];
+  // Setback towers taper, so the roof caps the top plate rather than the base.
+  const roofBounds = lastFloor ? getFloorBounds(lastFloor) : bounds;
   const showRoof =
     construction.showRoof &&
     options.showRoof &&
@@ -30,7 +36,15 @@ export function BuildingModel({ plan, options }: BuildingModelProps) {
         <FloorPlanModel
           key={floor.id}
           floor={floor}
-          options={options}
+          options={{
+            ...options,
+            // One label per room across a whole tower is thousands of DOM
+            // nodes, so tall stacks only annotate the floor in focus.
+            showRoomLabels:
+              options.showRoomLabels &&
+              (plan.floors.length <= LABELLED_FLOOR_MAX ||
+                floor.id === options.floorId),
+          }}
           showPlanDimensions={
             floor.elevation === 0 &&
             options.showDimensions &&
@@ -38,23 +52,26 @@ export function BuildingModel({ plan, options }: BuildingModelProps) {
           }
         />
       ))}
+      {construction.showOpenings && construction.showWalls ? (
+        <FacadeGlazing floors={floors} wireframe={options.wireframe} />
+      ) : null}
       {construction.showSlabs && options.showAllFloors
         ? plan.floors.map((floor) => (
             <FloorSlab
               key={`slab-${floor.id}`}
               elevation={floor.elevation}
-              bounds={bounds}
+              bounds={getFloorBounds(floor)}
               wireframe={options.wireframe}
             />
           ))
         : null}
-      {showRoof ? (
+      {showRoof && lastFloor ? (
         <StandingSeamRoof
           roof={plan.roof}
-          minX={bounds.minX}
-          maxX={bounds.maxX}
-          minZ={bounds.minY}
-          maxZ={bounds.maxY}
+          minX={roofBounds.minX}
+          maxX={roofBounds.maxX}
+          minZ={roofBounds.minY}
+          maxZ={roofBounds.maxY}
           wireframe={options.wireframe}
         />
       ) : null}

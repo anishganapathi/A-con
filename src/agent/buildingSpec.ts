@@ -1,3 +1,5 @@
+import type { Point2D } from "../types/floorPlan";
+
 export type BuildingTypology =
   | "residential"
   | "retail"
@@ -23,6 +25,22 @@ export interface ZoneSpec {
   w: number;
   h: number;
   kind: ZoneKind;
+  /** Set for GIS-derived plates, where zones follow the real footprint. */
+  polygon?: Point2D[];
+}
+
+/** Measured facts from a real building, kept separate from synthesized layout. */
+export interface SurveySource {
+  provider: string;
+  address: string;
+  bbl: string;
+  bin: string;
+  yearBuilt: number | null;
+  bldgClass: string | null;
+  latitude: number;
+  longitude: number;
+  heightEstimated: boolean;
+  attribution: string;
 }
 
 export interface BuildingSpec {
@@ -39,21 +57,79 @@ export interface BuildingSpec {
   notes?: string;
   project?: string;
   zones: ZoneSpec[];
+  /** Real footprint ring in meters, origin at the bounding-box corner. */
+  footprint?: Point2D[];
+  /** Gross floor area in m² from the tax record, used to derive setbacks. */
+  grossFloorAreaM2?: number;
+  /** Surveyed setback volumes; when present they replace the inferred taper. */
+  massing?: MassingVolume[];
+  /** Structural top including spire or mast, in meters. */
+  tipHeight?: number;
+  survey?: SurveySource;
 }
+
+export interface MassingVolume {
+  id: string;
+  polygon: Point2D[];
+  minHeight: number;
+  maxHeight: number;
+  roofShape: string | null;
+  roofHeight: number;
+}
+
+/**
+ * The plate at a given elevation is the largest volume spanning it. Smaller
+ * concurrent volumes (lift spines, the mast shaft) sit inside the envelope,
+ * so taking the largest reproduces the silhouette without polygon unions.
+ */
+export function plateAtElevation(
+  massing: MassingVolume[],
+  elevation: number,
+): MassingVolume | null {
+  let best: MassingVolume | null = null;
+  for (const volume of massing) {
+    if (elevation < volume.minHeight - 0.01 || elevation >= volume.maxHeight) {
+      continue;
+    }
+    if (!best || polygonArea(volume.polygon) > polygonArea(best.polygon)) {
+      best = volume;
+    }
+  }
+  return best;
+}
+
+const MAX_STORIES = 120;
 
 export function normalizeSpec(raw: Partial<BuildingSpec> | undefined): BuildingSpec {
   const typology = raw?.typology ?? "residential";
-  const width = clamp(raw?.width ?? defaultSize(typology).width, 8, 120);
-  const depth = clamp(raw?.depth ?? defaultSize(typology).depth, 8, 90);
-  const stories = Math.min(4, Math.max(1, Math.round(raw?.stories ?? 1)));
+  const footprint = normalizeFootprint(raw?.footprint);
+  const surveyed = Boolean(footprint);
+
+  // Synthesized buildings stay in a sane envelope; surveyed ones use real values.
+  const bbox = footprint ? footprintBounds(footprint) : null;
+  const width = bbox
+    ? bbox.width
+    : clamp(raw?.width ?? defaultSize(typology).width, 8, 120);
+  const depth = bbox
+    ? bbox.depth
+    : clamp(raw?.depth ?? defaultSize(typology).depth, 8, 90);
+  const storyCap = surveyed ? MAX_STORIES : 12;
+  const stories = Math.min(
+    storyCap,
+    Math.max(1, Math.round(raw?.stories ?? 1)),
+  );
   const storyHeight = clamp(
     raw?.storyHeight ?? defaultSize(typology).storyHeight,
-    2.6,
-    12,
+    2.4,
+    14,
   );
   const zones = (raw?.zones ?? [])
     .map((zone, index) => normalizeZone(zone, index, width, depth))
     .filter((zone) => zone.w >= 1.5 && zone.h >= 1.5);
+
+  const fallbackZones = footprint
+    ? coreAndRingZones(footprint, typology, stories)
+    : layoutZones(typology, width, depth, raw?.reference);
 
   return {
     name: raw?.name?.trim() || raw?.reference?.trim() || "New building",
@@ -63,13 +139,317 @@ export function normalizeSpec(raw: Partial<BuildingSpec> | undefined): BuildingS
     depth,
     stories,
     storyHeight,
-    roof: raw?.roof ?? (typology === "residential" ? "standing-seam" : "flat"),
+    roof: raw?.roof ?? (typology === "residential" && !surveyed ? "standing-seam" : "flat"),
     exteriorColor: raw?.exteriorColor,
     includeMep: raw?.includeMep ?? true,
     notes: raw?.notes,
     project: raw?.project ?? raw?.name,
-    zones: zones.length > 0 ? zones : layoutZones(typology, width, depth, raw?.reference),
+    zones: zones.length > 0 ? zones : fallbackZones,
+    footprint,
+    grossFloorAreaM2: raw?.grossFloorAreaM2,
+    massing: raw?.massing,
+    tipHeight: raw?.tipHeight,
+    survey: raw?.survey,
   };
+}
+
+export function polygonArea(points: Point2D[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum / 2);
+}
+
+export function scalePolygon(points: Point2D[], scale: number): Point2D[] {
+  const centroid = polygonCentroid(points);
+  return points.map((point) => ({
+    x: round(centroid.x + (point.x - centroid.x) * scale),
+    y: round(centroid.y + (point.y - centroid.y) * scale),
+  }));
+}
+
+/**
+ * Footprints are 2D, so a tower would otherwise extrude its base straight up.
+ * The tax record's gross floor area is the only public signal for setbacks:
+ * when it falls well short of footprint x storeys, the upper floors must be
+ * smaller. Returns a per-floor linear scale that spends the area budget.
+ */
+export function plateScales(
+  footprint: Point2D[],
+  stories: number,
+  grossFloorAreaM2: number | undefined,
+): number[] {
+  const full = new Array<number>(stories).fill(1);
+  const plate = polygonArea(footprint);
+  if (!grossFloorAreaM2 || grossFloorAreaM2 <= 0 || plate <= 0 || stories < 6) {
+    return full;
+  }
+
+  const straightTotal = plate * stories;
+  // Within ~15% of a straight extrusion means no meaningful setback.
+  if (grossFloorAreaM2 > straightTotal * 0.85) {
+    return full;
+  }
+
+  const baseFloors = Math.max(2, Math.round(stories * 0.06));
+  const midFloors = Math.max(2, Math.round(stories * 0.14));
+  const towerFloors = stories - baseFloors - midFloors;
+  if (towerFloors <= 0) {
+    return full;
+  }
+
+  // Solve k for: base*A + mid*A*m² + tower*A*k² = target, with m midway.
+  const remaining = grossFloorAreaM2 - baseFloors * plate;
+  if (remaining <= 0) {
+    return full.map((_, index) => (index < baseFloors ? 1 : 0.45));
+  }
+  // m = (1 + k) / 2  =>  m² = (1 + 2k + k²) / 4
+  const a = towerFloors + midFloors / 4;
+  const b = midFloors / 2;
+  const c = midFloors / 4 - remaining / plate;
+  const disc = b * b - 4 * a * c;
+  const k = disc > 0 ? (-b + Math.sqrt(disc)) / (2 * a) : 0.45;
+  const tower = clamp(k, 0.28, 1);
+  const mid = clamp((1 + tower) / 2, tower, 1);
+
+  return full.map((_, index) => {
+    if (index < baseFloors) {
+      return 1;
+    }
+    return index < baseFloors + midFloors ? mid : tower;
+  });
+}
+
+function normalizeFootprint(raw: Point2D[] | undefined): Point2D[] | undefined {
+  if (!raw || raw.length < 4) {
+    return undefined;
+  }
+  const points = raw
+    .filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))
+    .map((point) => ({ x: point.x, y: point.y }));
+  return points.length >= 4 ? points : undefined;
+}
+
+export function footprintBounds(points: Point2D[]) {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    depth: maxY - minY,
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+  };
+}
+
+/**
+ * Real buildings are laid out as a service core wrapped by tenant space, so a
+ * surveyed footprint gets a scaled-in core and one perimeter bay per facade.
+ * Interior partitioning is never published; this is a plausible reconstruction.
+ */
+export function coreAndRingZones(
+  footprint: Point2D[],
+  typology: BuildingTypology,
+  stories: number,
+): ZoneSpec[] {
+  const centroid = polygonCentroid(footprint);
+  // Service cores run roughly a fifth of the plate in an office tower and less
+  // in residential, where the leasable perimeter is worth more.
+  const coreFraction = typology === "residential" ? 0.14 : stories > 12 ? 0.22 : 0.18;
+  const scale = clamp(Math.sqrt(coreFraction), 0.2, 0.62);
+  const core = scalePolygon(footprint, scale);
+
+  const tenantName = tenantLabel(typology);
+  const zones: ZoneSpec[] = [];
+
+  // Tall plates get four grouped facades; low plates get a bay per edge.
+  const grouped = stories > 12 || footprint.length > 8;
+  const bays = grouped
+    ? groupRingByFacade(footprint, core, centroid)
+    : footprint.map((point, index) => ({
+        polygon: [
+          point,
+          footprint[(index + 1) % footprint.length],
+          core[(index + 1) % core.length],
+          core[index],
+        ],
+        label: `${compass(point, footprint[(index + 1) % footprint.length], centroid)} ${tenantName}`,
+      }));
+
+  bays.forEach((bay, index) => {
+    zones.push({
+      id: `bay-${index + 1}`,
+      name: bay.label,
+      kind: typology === "residential" ? "living" : "work",
+      polygon: bay.polygon,
+      ...rectOf(bay.polygon),
+    });
+  });
+
+  zones.push({
+    id: "core",
+    name: "Elevator Core & Stairs",
+    kind: "circulation",
+    polygon: core,
+    ...rectOf(core),
+  });
+
+  // Wet stack sits inside the core; keep it small so it reads as a shaft
+  // rather than a second room competing with the elevator lobby.
+  const coreBounds = footprintBounds(core);
+  const shaftW = clamp(coreBounds.width * 0.3, 2, 9);
+  const shaftH = clamp(coreBounds.depth * 0.3, 2, 9);
+  const shaft: Point2D[] = [
+    { x: round(coreBounds.centerX - shaftW / 2), y: round(coreBounds.centerY - shaftH / 2) },
+    { x: round(coreBounds.centerX + shaftW / 2), y: round(coreBounds.centerY - shaftH / 2) },
+    { x: round(coreBounds.centerX + shaftW / 2), y: round(coreBounds.centerY + shaftH / 2) },
+    { x: round(coreBounds.centerX - shaftW / 2), y: round(coreBounds.centerY + shaftH / 2) },
+  ];
+  zones.push({
+    id: "core-service",
+    name: "Restrooms & MEP Shaft",
+    kind: "wet",
+    polygon: shaft,
+    ...rectOf(shaft),
+  });
+
+  return zones;
+}
+
+interface RingBay {
+  polygon: Point2D[];
+  label: string;
+}
+
+/** Collapses a many-sided ring into north/east/south/west perimeter bays. */
+function groupRingByFacade(
+  footprint: Point2D[],
+  core: Point2D[],
+  centroid: Point2D,
+): RingBay[] {
+  const buckets: Record<string, number[]> = { North: [], East: [], South: [], West: [] };
+  for (let i = 0; i < footprint.length; i += 1) {
+    const a = footprint[i];
+    const b = footprint[(i + 1) % footprint.length];
+    buckets[compass(a, b, centroid)].push(i);
+  }
+
+  const bays: RingBay[] = [];
+  for (const [name, indices] of Object.entries(buckets)) {
+    if (indices.length === 0) {
+      continue;
+    }
+    // Keep each facade contiguous so the bay stays a simple polygon.
+    for (const run of contiguousRuns(indices, footprint.length)) {
+      const outer = run.map((index) => footprint[index]);
+      outer.push(footprint[(run[run.length - 1] + 1) % footprint.length]);
+      const inner = run.map((index) => core[index]);
+      inner.push(core[(run[run.length - 1] + 1) % core.length]);
+      bays.push({
+        polygon: [...outer, ...inner.reverse()],
+        label: `${name} Perimeter`,
+      });
+    }
+  }
+  return bays.length > 0 ? bays : [];
+}
+
+function contiguousRuns(indices: number[], total: number): number[][] {
+  const sorted = [...indices].sort((a, b) => a - b);
+  const runs: number[][] = [];
+  let current: number[] = [];
+  for (const index of sorted) {
+    if (current.length === 0 || index === current[current.length - 1] + 1) {
+      current.push(index);
+    } else {
+      runs.push(current);
+      current = [index];
+    }
+  }
+  if (current.length > 0) {
+    runs.push(current);
+  }
+  // Merge a run that wraps past the last vertex back onto the first.
+  if (
+    runs.length > 1 &&
+    runs[0][0] === 0 &&
+    runs[runs.length - 1][runs[runs.length - 1].length - 1] === total - 1
+  ) {
+    const last = runs.pop();
+    if (last) {
+      runs[0] = [...last, ...runs[0]];
+    }
+  }
+  return runs;
+}
+
+function compass(a: Point2D, b: Point2D, centroid: Point2D): "North" | "East" | "South" | "West" {
+  const midX = (a.x + b.x) / 2 - centroid.x;
+  const midY = (a.y + b.y) / 2 - centroid.y;
+  if (Math.abs(midY) >= Math.abs(midX)) {
+    return midY >= 0 ? "North" : "South";
+  }
+  return midX >= 0 ? "East" : "West";
+}
+
+function tenantLabel(typology: BuildingTypology): string {
+  if (typology === "office") {
+    return "Office Wing";
+  }
+  if (typology === "retail") {
+    return "Sales Floor";
+  }
+  if (typology === "warehouse") {
+    return "Rack Hall";
+  }
+  if (typology === "civic") {
+    return "Public Hall";
+  }
+  return "Residences";
+}
+
+function polygonCentroid(points: Point2D[]): Point2D {
+  let area = 0;
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const cross = a.x * b.y - b.x * a.y;
+    area += cross;
+    x += (a.x + b.x) * cross;
+    y += (a.y + b.y) * cross;
+  }
+  area /= 2;
+  if (Math.abs(area) < 1e-6) {
+    const bounds = footprintBounds(points);
+    return { x: bounds.centerX, y: bounds.centerY };
+  }
+  return { x: x / (6 * area), y: y / (6 * area) };
+}
+
+function rectOf(points: Point2D[]): { x: number; y: number; w: number; h: number } {
+  const bounds = footprintBounds(points);
+  return {
+    x: round(bounds.minX),
+    y: round(bounds.minY),
+    w: round(Math.max(bounds.width, 0.1)),
+    h: round(Math.max(bounds.depth, 0.1)),
+  };
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 export function inferSpecFromPrompt(text: string): BuildingSpec {

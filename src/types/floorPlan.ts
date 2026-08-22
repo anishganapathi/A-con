@@ -106,6 +106,8 @@ export interface Floor {
   id: string;
   name: string; // "Ground Floor", "First Floor"
   elevation: number; // meters, base z-height of this floor
+  /** False for crown or mast levels that carry structure but no occupancy. */
+  occupiable?: boolean;
   walls: Wall[];
   openings: Opening[];
   rooms: Room[];

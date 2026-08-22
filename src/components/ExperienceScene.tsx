@@ -14,7 +14,8 @@ import { getPlanBounds } from "./FloorPlanModel";
 export function ExperienceScene() {
   const { floorPlan } = useEditor();
   const bounds = getPlanBounds(floorPlan);
-  const span = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 20);
+  const plateSpan = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 20);
+  const span = Math.max(plateSpan, floorPlan.roof.ridgeHeight * 0.85);
   const target: [number, number, number] = [
     bounds.centerX,
     floorPlan.roof.ridgeHeight * 0.42,

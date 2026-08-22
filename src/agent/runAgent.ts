@@ -3,6 +3,12 @@ import { describeAction } from "./applyAction";
 import { inferSpecFromPrompt } from "./buildingSpec";
 import { compileSpec } from "./compileSpec";
 import { planEdits } from "./editAgent";
+import {
+  describeGis,
+  fetchNycBuilding,
+  looksLikeNycLookup,
+  specFromGis,
+} from "./gisBuilding";
 import { planLlmActions } from "./llmPlanner";
 import type { ModelSettings } from "./modelSettings";
 import { summarizePlan } from "./summarize";
@@ -16,6 +22,13 @@ export async function runConstructionAgent(input: {
   requireApi?: boolean;
 }): Promise<AgentTurn> {
   const role = route(input.text, input.attachments);
+
+  // A named NYC building is a survey, not a guess — resolve it from GIS and
+  // skip the model entirely so the envelope stays measured.
+  if (role === "construct" && looksLikeNycLookup(input.text)) {
+    return runGisBuild(input.text);
+  }
+
   try {
     const llm = await planLlmActions({
       text: input.text,
@@ -33,6 +46,34 @@ export async function runConstructionAgent(input: {
     }
   }
   return runLocal(role, input.text, input.plan, input.attachments ?? []);
+}
+
+async function runGisBuild(text: string): Promise<AgentTurn> {
+  try {
+    const building = await fetchNycBuilding(text);
+    const spec = specFromGis(building);
+    const next = compileSpec(spec);
+    return {
+      agent: "construct",
+      planner: "gis",
+      model: "nyc-open-data",
+      reply: describeGis(building),
+      actions: [
+        {
+          type: "replace_plan",
+          plan: next,
+          note: `Surveyed ${building.name} · BBL ${building.bbl}`,
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      agent: "explain",
+      planner: "gis",
+      reply: `NYC GIS lookup failed: ${error instanceof Error ? error.message : "unknown error"}\n\nTry a full street address with the borough, for example “350 5th Ave, Manhattan”, or a 10-digit BBL.`,
+      actions: [],
+    };
+  }
 }
 
 function route(text: string, attachments?: ChatAttachment[]): AgentRole {

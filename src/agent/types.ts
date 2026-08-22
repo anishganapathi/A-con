@@ -44,15 +44,17 @@ export interface ChatMessage {
   agent?: AgentRole;
   actions?: string[];
   attachments?: ChatAttachment[];
-  planner?: "local" | "llm";
+  planner?: PlannerKind;
   model?: string;
 }
+
+export type PlannerKind = "local" | "llm" | "gis";
 
 export interface AgentTurn {
   agent: AgentRole;
   reply: string;
   actions: AgentAction[];
-  planner: "local" | "llm";
+  planner: PlannerKind;
   model?: string;
   error?: string;
 }

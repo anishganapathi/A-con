@@ -7,6 +7,7 @@ import {
   resolveConfig,
   type ServerProvider,
 } from "./modelProviders.ts";
+import { lookupNycBuilding } from "./nycGis.ts";
 
 export function agentPlugin(): Plugin {
   return {
@@ -23,8 +24,39 @@ export function agentPlugin(): Plugin {
         }
         void handleAgent(server, req, res);
       });
+      server.middlewares.use("/api/gis", (req, res, next) => {
+        if (req.method !== "POST") {
+          next();
+          return;
+        }
+        void handleGis(req, res);
+      });
     },
   };
+}
+
+async function handleGis(req: IncomingMessage, res: ServerResponse) {
+  try {
+    const body = (await readJson(req)) as { query?: string };
+    const query = body.query?.trim();
+    if (!query) {
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "Missing query" }));
+      return;
+    }
+    const building = await lookupNycBuilding(query);
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(building));
+  } catch (error) {
+    res.statusCode = 502;
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "NYC GIS lookup failed",
+      }),
+    );
+  }
 }
 
 function envFrom(server: ViteDevServer): Record<string, string> {

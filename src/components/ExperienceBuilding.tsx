@@ -2,10 +2,12 @@ import { Edges, Html } from "@react-three/drei";
 import type { Floor, FloorPlan, Opening, Wall } from "../types/floorPlan";
 import {
   computeWallSegments,
+  getFloorBounds,
   getPlanBounds,
   openingsForWall,
 } from "./FloorPlanModel";
 import { useConstruction } from "../editor/ConstructionContext";
+import { FacadeGlazing } from "./FacadeGlazing";
 import { StandingSeamRoof } from "./StandingSeamRoof";
 import { UtilityRun } from "./UtilityRun";
 
@@ -18,15 +20,27 @@ interface ExperienceBuildingProps {
   plan: FloorPlan;
 }
 
+/** Floor tags are DOM nodes, so a tall stack is sampled down to a few marks. */
+const MAX_FLOOR_TAGS = 8;
+
 export function ExperienceBuilding({ plan }: ExperienceBuildingProps) {
   const construction = useConstruction();
   const bounds = getPlanBounds(plan);
+  const lastFloor = plan.floors[plan.floors.length - 1];
+  const roofBounds = lastFloor ? getFloorBounds(lastFloor) : bounds;
+  const tagStep = Math.max(1, Math.ceil(plan.floors.length / MAX_FLOOR_TAGS));
+  const taggedFloors = plan.floors.filter(
+    (_, index) => index % tagStep === 0 || index === plan.floors.length - 1,
+  );
 
   return (
     <group>
       {plan.floors.map((floor) => (
         <ExperienceFloor key={floor.id} floor={floor} />
       ))}
+      {construction.showOpenings && construction.showWalls ? (
+        <FacadeGlazing floors={plan.floors} wireframe={false} />
+      ) : null}
       <mesh
         position={[bounds.centerX, -0.06, bounds.centerZ]}
         receiveShadow
@@ -46,14 +60,14 @@ export function ExperienceBuilding({ plan }: ExperienceBuildingProps) {
           roof={{
             ...plan.roof,
           }}
-          minX={bounds.minX}
-          maxX={bounds.maxX}
-          minZ={bounds.minY}
-          maxZ={bounds.maxY}
+          minX={roofBounds.minX}
+          maxX={roofBounds.maxX}
+          minZ={roofBounds.minY}
+          maxZ={roofBounds.maxY}
           wireframe={false}
         />
       ) : null}
-      {plan.floors.map((floor) => (
+      {taggedFloors.map((floor) => (
         <Html
           key={`hotspot-${floor.id}`}
           position={[
