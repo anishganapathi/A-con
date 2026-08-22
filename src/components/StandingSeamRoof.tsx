@@ -1,4 +1,6 @@
 import type { Roof } from "../types/floorPlan";
+import { DEFAULT_ROOF_MATERIAL, resolveMaterial } from "../editor/materials";
+import { shadeHex } from "../materials/color";
 
 interface StandingSeamRoofProps {
   roof: Roof;
@@ -26,16 +28,17 @@ export function StandingSeamRoof({
   const cx = (minX + maxX) / 2;
   const cz = (minZ + maxZ) / 2;
   const midY = (roof.eaveHeight + roof.ridgeHeight) / 2;
+  const finish = resolveMaterial(roof.material, DEFAULT_ROOF_MATERIAL);
   const metal = {
-    color: "#5b6570",
-    roughness: 0.38,
-    metalness: 0.62,
+    color: finish.color,
+    roughness: finish.roughness,
+    metalness: finish.metalness,
     wireframe,
   };
   const fascia = {
-    color: "#3e454c",
-    roughness: 0.45,
-    metalness: 0.5,
+    color: shadeHex(finish.color, -0.08),
+    roughness: Math.min(1, finish.roughness + 0.07),
+    metalness: finish.metalness * 0.8,
     wireframe,
   };
   const seamCount = Math.max(6, Math.round(length / 0.5));
@@ -113,9 +116,9 @@ function RoofPlane({
         <mesh key={x} position={[x, 0.04, 0]} castShadow>
           <boxGeometry args={[0.03, 0.05, slopeLen]} />
           <meshStandardMaterial
-            color="#6a7380"
-            roughness={0.32}
-            metalness={0.7}
+            color={shadeHex(metal.color, 0.05)}
+            roughness={Math.max(0, metal.roughness - 0.06)}
+            metalness={Math.min(1, metal.metalness + 0.08)}
             wireframe={metal.wireframe}
           />
         </mesh>

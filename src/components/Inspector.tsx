@@ -1,9 +1,11 @@
+import { useEffect, useRef } from "react";
 import type {
   ElectricalRun,
   Opening,
   PipeRun,
   Room,
   SelectableKind,
+  Selection,
   SurfaceMaterial,
   Wall,
 } from "../types/floorPlan";
@@ -16,6 +18,12 @@ import {
   defaultWallMaterial,
   resolveMaterial,
 } from "../editor/materials";
+import {
+  matchPreset,
+  surfaceForSelection,
+  type PresetSurface,
+} from "../materials/presets";
+import { MaterialPresets } from "./MaterialPresets";
 
 export function Inspector() {
   const {
@@ -35,10 +43,11 @@ export function Inspector() {
     removeSelected,
     select,
   } = useEditor();
+  const panel = useSelectionInView(selection);
 
   if (!selection) {
     return (
-      <aside className="inspector-panel" aria-label="Object inspector">
+      <aside ref={panel} className="inspector-panel" aria-label="Object inspector">
         <p className="view-kicker">Inspector</p>
         <h1>Nothing selected</h1>
         <p className="inspector-empty">
@@ -50,7 +59,7 @@ export function Inspector() {
   }
 
   return (
-    <aside className="inspector-panel" aria-label="Object inspector">
+    <aside ref={panel} className="inspector-panel" aria-label="Object inspector">
       <header className="view-panel-header">
         <p className="view-kicker">Inspector</p>
         <h1>
@@ -171,6 +180,7 @@ function WallFields({
       </label>
       <MaterialFields
         material={material}
+        surface={surfaceForSelection("wall", wall.type)}
         onChange={(next) => onChange({ material: next })}
       />
       <NumberField
@@ -213,6 +223,7 @@ function RoomFields({
       </label>
       <MaterialFields
         material={material}
+        surface={surfaceForSelection("room")}
         onChange={(next) => onChange({ material: next })}
       />
     </div>
@@ -346,6 +357,7 @@ function OpeningFields({
       </label>
       <MaterialFields
         material={material}
+        surface={surfaceForSelection("opening")}
         showOpacity
         onChange={(next) => onChange({ material: next })}
       />
@@ -377,17 +389,46 @@ function OpeningFields({
   );
 }
 
+/**
+ * Clicking a wall in the model is a long way from the rail, and the inspector may
+ * be below the fold, so a fresh selection brings itself into view. Keyed on what
+ * is selected rather than on every edit, so dragging a slider does not scroll.
+ */
+function useSelectionInView(selection: Selection | null) {
+  const panel = useRef<HTMLElement>(null);
+  const key = selection ? `${selection.kind}:${selection.id}` : null;
+
+  useEffect(() => {
+    if (!key) {
+      return;
+    }
+    panel.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [key]);
+
+  return panel;
+}
+
 function MaterialFields({
   material,
+  surface = null,
   showOpacity = false,
   onChange,
 }: {
   material: SurfaceMaterial;
+  surface?: PresetSurface | null;
   showOpacity?: boolean;
   onChange: (next: SurfaceMaterial) => void;
 }) {
   return (
     <>
+      {surface ? (
+        <MaterialPresets
+          surface={surface}
+          label="Finish"
+          activeId={matchPreset(material, surface)?.id}
+          onPick={(preset) => onChange({ ...preset.material })}
+        />
+      ) : null}
       <label className="view-field color-field">
         <span>Color</span>
         <input

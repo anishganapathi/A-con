@@ -7,6 +7,7 @@ import {
   openingsForWall,
 } from "./FloorPlanModel";
 import { useConstruction } from "../editor/ConstructionContext";
+import { mixHex, shadeHex } from "../materials/color";
 import { FacadeGlazing } from "./FacadeGlazing";
 import { StandingSeamRoof } from "./StandingSeamRoof";
 import { UtilityRun } from "./UtilityRun";
@@ -15,6 +16,8 @@ const EDGE = "#7ee0d6";
 const FILL = "#0d1418";
 const INTERIOR = "#10181d";
 const GLASS = "#5eead4";
+/** How far a chosen finish is pulled toward night, so the scene stays a night scene. */
+const NIGHT_MIX = 0.62;
 
 interface ExperienceBuildingProps {
   plan: FloorPlan;
@@ -160,6 +163,12 @@ function ExperienceWall({
   const dirZ = length === 0 ? 0 : dz / length;
   const rotationY = Math.atan2(-dz, dx);
   const isExterior = wall.type === "exterior";
+  // Only a deliberate finish tints the building. Left alone, the wall keeps the
+  // night-render look rather than being repainted in its plan-view colour.
+  const base = isExterior ? FILL : INTERIOR;
+  const finish = wall.material?.color;
+  const fill = finish ? mixHex(finish, base, NIGHT_MIX) : base;
+  const glow = finish ? shadeHex(finish, -0.35) : "#123038";
 
   return (
     <group>
@@ -184,12 +193,12 @@ function ExperienceWall({
           >
             <boxGeometry args={[segLength, height, wall.thickness]} />
             <meshStandardMaterial
-              color={isExterior ? FILL : INTERIOR}
-              roughness={0.55}
-              metalness={0.35}
+              color={fill}
+              roughness={wall.material?.roughness ?? 0.55}
+              metalness={wall.material?.metalness ?? 0.35}
               transparent={!isExterior}
               opacity={isExterior ? 1 : 0.28}
-              emissive={isExterior ? "#123038" : "#000000"}
+              emissive={isExterior ? glow : "#000000"}
               emissiveIntensity={isExterior ? 0.35 : 0}
             />
             {isExterior ? <Edges color={EDGE} threshold={15} /> : null}
@@ -198,6 +207,7 @@ function ExperienceWall({
       })}
       {openings.map((opening) => {
         const mid = opening.offsetFromStart + opening.width / 2;
+        const glazing = opening.type === "window" ? (opening.material?.color ?? GLASS) : "#2a1f1a";
         return (
           <mesh
             key={opening.id}
@@ -216,8 +226,8 @@ function ExperienceWall({
               ]}
             />
             <meshStandardMaterial
-              color={opening.type === "window" ? GLASS : "#2a1f1a"}
-              emissive={opening.type === "window" ? GLASS : "#6b5344"}
+              color={glazing}
+              emissive={opening.type === "window" ? glazing : "#6b5344"}
               emissiveIntensity={opening.type === "window" ? 1.6 : 0.3}
               transparent
               opacity={opening.type === "window" ? 0.55 : 0.85}

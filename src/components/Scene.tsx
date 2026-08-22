@@ -5,6 +5,7 @@ import { useEditor } from "../editor/EditorContext";
 import type { ViewOptions } from "../types/floorPlan";
 import { BuildingModel, getPlanBounds } from "./FloorPlanModel";
 import { PersistedOrbitControls, usePersistedView } from "./PersistedOrbitControls";
+import { SceneEnvironment } from "./SceneEnvironment";
 import type { CameraPose } from "./cameraPose";
 
 interface SceneProps {
@@ -87,8 +88,11 @@ function Lights({ span }: { span: number }) {
   const reach = Math.max(40, span * 1.2);
   return (
     <>
-      <ambientLight intensity={0.4} />
-      <hemisphereLight args={["#eef3f8", "#b9a894", 0.5]} />
+      {/* The environment map carries most of the fill, so the flat ambient and
+          hemisphere lights are dialled back to keep the exposure as it was. */}
+      <SceneEnvironment intensity={0.9} />
+      <ambientLight intensity={0.1} />
+      <hemisphereLight args={["#eef3f8", "#b9a894", 0.22]} />
       <directionalLight
         castShadow
         position={[span * 0.45, Math.max(22, span * 0.55), span * 0.3]}

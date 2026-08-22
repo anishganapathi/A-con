@@ -49,16 +49,6 @@ export function ViewControls({
 
       <div className="view-toggles">
         <Toggle
-          label="3D perspective"
-          pressed={!options.is2D}
-          onClick={() => patch({ is2D: false })}
-        />
-        <Toggle
-          label="2D plan"
-          pressed={options.is2D}
-          onClick={() => patch({ is2D: true })}
-        />
-        <Toggle
           label="Plan dimensions"
           pressed={options.showDimensions}
           onClick={() => patch({ showDimensions: !options.showDimensions })}

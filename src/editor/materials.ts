@@ -7,6 +7,13 @@ import type {
   Wall,
 } from "../types/floorPlan";
 
+export const DEFAULT_ROOF_MATERIAL: SurfaceMaterial = {
+  color: "#5b6570",
+  roughness: 0.38,
+  metalness: 0.62,
+  opacity: 1,
+};
+
 export const WALL_TYPE_COLORS: Record<Wall["type"], string> = {
   exterior: "#d7cec0",
   interior: "#f0ebe3",

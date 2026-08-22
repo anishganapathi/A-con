@@ -20,13 +20,16 @@ export async function runConstructionAgent(input: {
   attachments?: ChatAttachment[];
   settings?: ModelSettings;
   requireApi?: boolean;
+  /** When set, the model on screen may be edited but never rebuilt. */
+  locked?: boolean;
 }): Promise<AgentTurn> {
-  const role = route(input.text, input.attachments);
+  const role = resolveAgentRole(input.text, input.attachments, input.locked);
+  const guard = (turn: AgentTurn) => (input.locked ? lockWorkspaceTurn(turn) : turn);
 
   // A named NYC building is a survey, not a guess — resolve it from GIS and
   // skip the model entirely so the envelope stays measured.
   if (role === "construct" && looksLikeNycLookup(input.text)) {
-    return runGisBuild(input.text);
+    return guard(await runGisBuild(input.text));
   }
 
   try {
@@ -38,14 +41,51 @@ export async function runConstructionAgent(input: {
       settings: input.settings,
     });
     if (llm) {
-      return llm;
+      return guard(llm);
     }
   } catch (error) {
     if (input.requireApi) {
       throw error;
     }
   }
-  return runLocal(role, input.text, input.plan, input.attachments ?? []);
+  return guard(runLocal(role, input.text, input.plan, input.attachments ?? []));
+}
+
+/**
+ * What the prompt is asking for. A locked workspace can still be edited, so a
+ * prompt that would author a new building is answered against the live model
+ * instead of replacing it.
+ */
+export function resolveAgentRole(
+  text: string,
+  attachments?: ChatAttachment[],
+  locked = false,
+): AgentRole {
+  const role = route(text, attachments);
+  if (locked && (role === "construct" || role === "extract")) {
+    return "edit";
+  }
+  return role;
+}
+
+/**
+ * Last line of defence for a locked workspace: the planner can still come back
+ * with a whole new plan, and this drops anything that would overwrite the model
+ * while keeping the edits that only touch it.
+ */
+export function lockWorkspaceTurn(turn: AgentTurn): AgentTurn {
+  const actions = turn.actions.filter((action) => action.type !== "replace_plan");
+  const rebuilding = actions.length !== turn.actions.length || turn.draftSpec !== undefined;
+  if (!rebuilding) {
+    return turn;
+  }
+  return {
+    ...turn,
+    agent: "edit",
+    draftSpec: undefined,
+    actions,
+    reply: `${turn.reply}\n\nThe workspace is locked, so I kept the model that is on screen and applied only the live edits. Unlock it to build something new.`,
+  };
 }
 
 async function runGisBuild(text: string): Promise<AgentTurn> {

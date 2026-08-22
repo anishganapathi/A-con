@@ -93,6 +93,7 @@ export interface Roof {
   eaveHeight: number;
   ridgeHeight: number;
   overhang: number;
+  material?: SurfaceMaterial;
 }
 
 export interface DrawingSource {

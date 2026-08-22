@@ -222,10 +222,21 @@
   flex-direction: column;
   width: 280px;
   /* Hugs its content rather than stretching, but never past the viewport —
-     the sections scroll inside instead. */
+     the rail scrolls inside instead. */
   max-height: calc(100% - 38px);
-  /* Clips the sections' scroll overflow to the rounded corners. */
+  /* Clips the scroll to the rounded corners. The rail itself must not be the
+     scroller: the rim and highlight are absolutely positioned against it, and
+     would stretch over the scroll height and slide away with the content. */
   overflow: hidden;
+}
+
+.rail-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .app-experience .left-rail {
@@ -576,9 +587,7 @@ textarea {
 }
 
 .view-panel {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
+  flex: 0 0 auto;
   padding: 18px 18px 14px;
 }
 
@@ -704,10 +713,185 @@ textarea {
   width: 100%;
 }
 
+/* Finishes sit between the view controls and the inspector: a building-wide
+   decision, above the per-object one. */
+/* Holds its own height — the grid inside is already capped, so the view panel
+   above is the one that scrolls when the window is short. */
+.finishes-panel {
+  flex: 0 0 auto;
+  overflow: hidden;
+  padding: 10px 18px 12px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.finishes-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.finishes-summary::-webkit-details-marker {
+  display: none;
+}
+
+.finishes-summary .view-kicker {
+  margin: 0;
+}
+
+.finishes-current {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.finish-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 8px;
+}
+
+.finish-tab {
+  flex: 1;
+  padding: 5px 2px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.finish-tab:hover {
+  background: var(--glass-control);
+  color: var(--ink);
+}
+
+.finish-tab.is-active {
+  background: var(--accent-soft);
+  color: var(--ink);
+  box-shadow: var(--glass-edge-soft);
+}
+
+.app-experience .finish-tab.is-active {
+  background: rgba(126, 224, 214, 0.18);
+  color: #e8f7f4;
+}
+
+.finish-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Swatches are wide enough to read the pattern and the name at a glance. */
+.finish-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 6px;
+}
+
+/* Two rows and a peek at the third: enough to browse, little enough that the
+   view controls above keep their room. */
+.finishes-panel .finish-grid {
+  max-height: 124px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.finish-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 9.5px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1), border-color 0.18s ease,
+    background 0.18s ease, color 0.18s ease;
+}
+
+.finish-swatch:hover {
+  transform: translateY(-1px);
+  background: var(--glass-control);
+  color: var(--ink);
+}
+
+.finish-swatch.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.app-experience .finish-swatch:hover,
+.app-experience .finish-swatch.is-active {
+  color: #e8f7f4;
+}
+
+.app-experience .finish-swatch.is-active {
+  border-color: rgba(126, 224, 214, 0.55);
+  background: rgba(126, 224, 214, 0.16);
+}
+
+/* The material itself, drawn from the preset's own tones and pattern. */
+.finish-chip {
+  display: block;
+  height: 26px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(28, 32, 38, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  background-size: cover;
+}
+
+.finish-name {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.finish-swatch:focus-visible,
+.finish-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Inside the inspector the picker is a secondary control, so it is tighter. */
+.inspector-fields .finish-picker {
+  margin-bottom: 4px;
+}
+
+.inspector-fields .finish-grid {
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  /* Capped so selecting a wall does not push the fields below it out of reach. */
+  max-height: 108px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.inspector-fields .finish-chip {
+  height: 20px;
+}
+
 .inspector-panel {
   flex: 0 0 auto;
-  max-height: 46%;
-  overflow: auto;
   padding: 14px 18px;
   border-top: 1px solid var(--glass-border);
   /* Slightly denser than the rail so the inspector reads as its own tray
