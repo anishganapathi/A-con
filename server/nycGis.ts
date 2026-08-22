@@ -137,13 +137,12 @@ export async function lookupNycBuilding(query: string): Promise<GisBuilding> {
   // Setbacks are invisible in a 2D footprint. When OSM has modelled the
   // building in 3D, that is a real survey and beats any inferred taper.
   try {
-    const massing = await fetchOsmMassing(origin, building);
-    if (massing.length > 0) {
-      building.massing = massing;
-      building.tipHeightM = Math.max(
-        building.heightRoofM,
-        ...massing.map((volume) => volume.maxHeight),
-      );
+    const survey = await fetchOsmMassing(origin, building);
+    // The tip stands on its own: a mapped spire raises the silhouette even when
+    // no setback parts are published, which is the common case.
+    building.tipHeightM = Math.max(building.heightRoofM, survey.tipHeight);
+    if (survey.volumes.length > 0) {
+      building.massing = survey.volumes;
       building.attribution +=
         " Setback massing from OpenStreetMap (ODbL) Simple 3D Buildings.";
     }
@@ -153,7 +152,7 @@ export async function lookupNycBuilding(query: string): Promise<GisBuilding> {
   return building;
 }
 
-interface Origin {
+export interface Origin {
   lat: number;
   lon: number;
   metersPerDegLon: number;
@@ -161,19 +160,19 @@ interface Origin {
   shiftY: number;
 }
 
-const massingCache = new Map<string, MassingVolume[]>();
+const massingCache = new Map<string, OsmSurvey>();
 
 async function fetchOsmMassing(
   origin: Origin,
   building: GisBuilding,
-): Promise<MassingVolume[]> {
+): Promise<OsmSurvey> {
   const cached = massingCache.get(building.bbl);
   if (cached) {
     return cached;
   }
 
   const radius = Math.max(60, Math.hypot(building.widthM, building.depthM) * 0.75);
-  const query = `[out:json][timeout:25];way["building:part"](around:${Math.round(radius)},${origin.lat.toFixed(6)},${origin.lon.toFixed(6)});out geom;`;
+  const query = overpassQuery(origin.lat, origin.lon, Math.round(radius));
 
   let payload: { elements?: OsmWay[] } | null = null;
   for (const endpoint of OVERPASS_ENDPOINTS) {
@@ -200,11 +199,57 @@ async function fetchOsmMassing(
     }
   }
   if (!payload?.elements?.length) {
-    return [];
+    return { volumes: [], tipHeight: building.heightRoofM };
   }
 
+  const survey = readOsmMassing(
+    payload.elements,
+    origin,
+    building.footprint,
+    building.heightRoofM,
+  );
+  massingCache.set(building.bbl, survey);
+  return survey;
+}
+
+/**
+ * Overpass query for everything that defines this building's silhouette: the
+ * Simple 3D Buildings parts that give the setbacks, plus the outline and any
+ * mast or antenna, which is often the only record of the structural tip.
+ */
+export function overpassQuery(lat: number, lon: number, radius: number): string {
+  const near = `(around:${radius},${lat.toFixed(6)},${lon.toFixed(6)})`;
+  return (
+    `[out:json][timeout:25];(` +
+    `way["building:part"]${near};` +
+    `way["building"]${near};` +
+    `way["man_made"~"^(mast|antenna|tower)$"]${near};` +
+    `);out geom;`
+  );
+}
+
+export interface OsmSurvey {
+  /** Habitable setback plates, bottom up. */
+  volumes: MassingVolume[];
+  /** Structural top, including a spire or antenna when one is mapped. */
+  tipHeight: number;
+}
+
+/**
+ * Splits an Overpass response into floor plates and a structural tip. A mast is
+ * not a floor plate, so it raises the tip without becoming a storey; the same
+ * goes for the building outline, whose height tag often includes the spire.
+ */
+export function readOsmMassing(
+  elements: OsmWay[],
+  origin: Origin,
+  footprint: GisPoint[],
+  roofHeightM: number,
+): OsmSurvey {
   const volumes: MassingVolume[] = [];
-  for (const way of payload.elements) {
+  let tipHeight = roofHeightM;
+
+  for (const way of elements) {
     const geometry = way.geometry ?? [];
     if (geometry.length < 4) {
       continue;
@@ -233,7 +278,12 @@ async function fetchOsmMassing(
     // Neighbouring towers can fall inside the search radius, so keep only
     // parts that actually sit over this tax lot's footprint.
     const centre = centroid(polygon);
-    if (!pointInPolygon(centre, building.footprint)) {
+    if (!pointInPolygon(centre, footprint)) {
+      continue;
+    }
+
+    tipHeight = Math.max(tipHeight, maxHeight);
+    if (way.tags?.["building:part"] === undefined) {
       continue;
     }
     volumes.push({
@@ -247,11 +297,10 @@ async function fetchOsmMassing(
   }
 
   volumes.sort((a, b) => a.minHeight - b.minHeight || a.maxHeight - b.maxHeight);
-  massingCache.set(building.bbl, volumes);
-  return volumes;
+  return { volumes, tipHeight: round(tipHeight) };
 }
 
-interface OsmWay {
+export interface OsmWay {
   id: number;
   tags?: Record<string, string>;
   geometry?: { lat: number; lon: number }[];

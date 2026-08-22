@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "login:cursor": "node scripts/cursorLogin.mjs",
+    "logout:cursor": "node -e \"import('@cursor/sdk').then(m=>m.Cursor.auth.logout()).then(()=>console.log('Signed out of the Cursor model.'))\""
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.28",

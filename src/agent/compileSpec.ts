@@ -78,9 +78,15 @@ export function compileSpec(raw: Partial<BuildingSpec>): FloorPlan {
     );
     elevation += spec.storyHeight;
   }
-  const structuralTop = surveyedMassing
-    ? Math.max(spireTop, elevation)
-    : elevation;
+  const modelledTop = surveyedMassing ? Math.max(spireTop, elevation) : elevation;
+  // A surveyed tip above the modelled envelope is a spire or antenna. Nothing
+  // else in the survey describes it, so it is drawn as a slender tapering mast.
+  const mast =
+    spec.tipHeight && spec.tipHeight > modelledTop + 0.5
+      ? mastFloors(spec, floors.at(-1), modelledTop, spec.tipHeight)
+      : [];
+  floors.push(...mast);
+  const structuralTop = mast.length > 0 ? spec.tipHeight! : modelledTop;
   const eave = structuralTop + (spec.roof === "flat" ? 0.35 : 0.4);
   const ridge = spec.roof === "flat" ? eave + 0.25 : eave + Math.max(1.4, spec.width * 0.04);
   return {
@@ -138,6 +144,88 @@ function atMassing(
 
 function spireName(index: number, occupiable: number): string {
   return `Mast Level ${index - occupiable + 1}`;
+}
+
+/** Plate width of the mast as a fraction of the roof it stands on. */
+const MAST_PLATE_RATIO = 0.18;
+/** How much the mast narrows between its base and the tip. */
+const MAST_TAPER = 0.75;
+/** A mast reads as a needle well before this, so segments stay bounded. */
+const MAX_MAST_LEVELS = 24;
+
+/**
+ * Builds the spire between the modelled envelope and a surveyed tip. The survey
+ * records only the tip height, so the mast is inferred: a slender square shaft
+ * centred on the top plate, tapering towards the tip and carrying no program.
+ */
+function mastFloors(
+  spec: BuildingSpec,
+  topFloor: Floor | undefined,
+  fromElevation: number,
+  tipHeight: number,
+): Floor[] {
+  const plate = topFloor
+    ? plateExtent(topFloor)
+    : { minX: 0, maxX: spec.width, minY: 0, maxY: spec.depth };
+  const centreX = (plate.minX + plate.maxX) / 2;
+  const centreY = (plate.minY + plate.maxY) / 2;
+  const plateSide = Math.min(plate.maxX - plate.minX, plate.maxY - plate.minY);
+  const baseSide = Math.min(6, Math.max(1.2, plateSide * MAST_PLATE_RATIO));
+  const levels = Math.min(
+    MAX_MAST_LEVELS,
+    Math.max(1, Math.ceil((tipHeight - fromElevation) / spec.storyHeight)),
+  );
+  const levelHeight = (tipHeight - fromElevation) / levels;
+  const material = exteriorMaterial(spec);
+
+  const floors: Floor[] = [];
+  for (let index = 0; index < levels; index += 1) {
+    const half = (baseSide * (1 - MAST_TAPER * (index / levels))) / 2;
+    const corners = [
+      { x: centreX - half, y: centreY - half },
+      { x: centreX + half, y: centreY - half },
+      { x: centreX + half, y: centreY + half },
+      { x: centreX - half, y: centreY + half },
+    ];
+    const id = `mast-${index + 1}`;
+    floors.push({
+      id,
+      name: `Mast Level ${index + 1}`,
+      elevation: fromElevation + index * levelHeight,
+      occupiable: false,
+      walls: corners.map((corner, corner_index) => ({
+        id: `${id}-w${corner_index + 1}`,
+        start: corner,
+        end: corners[(corner_index + 1) % corners.length],
+        height: levelHeight,
+        thickness: Math.min(0.3, half * 0.4),
+        type: "exterior" as const,
+        material,
+      })),
+      openings: [],
+      rooms: [],
+      dimensions: [],
+      pipes: [],
+      electrical: [],
+    });
+  }
+  return floors;
+}
+
+function plateExtent(floor: Floor): {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+} {
+  const xs = floor.walls.flatMap((wall) => [wall.start.x, wall.end.x]);
+  const ys = floor.walls.flatMap((wall) => [wall.start.y, wall.end.y]);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
 }
 
 /**
@@ -211,7 +299,10 @@ interface FloorMeta {
 
 function compileFloor(spec: BuildingSpec, meta: FloorMeta): Floor {
   const walls = wallsFromSpec(spec, meta.prefix, meta.dense);
-  const rooms = spec.zones.map((zone) => roomFromZone(zone, meta.prefix, meta.label));
+  // Crown and mast levels carry structure but no occupancy, so no rooms or MEP.
+  const rooms = meta.occupiable
+    ? spec.zones.map((zone) => roomFromZone(zone, meta.prefix, meta.label))
+    : [];
   // Tall plates only glaze the base; a full curtain wall on every storey
   // triples the wall geometry without reading differently at building scale.
   const openings =
@@ -241,10 +332,14 @@ function compileFloor(spec: BuildingSpec, meta: FloorMeta): Floor {
             },
           ]
         : [],
-    pipes: spec.includeMep ? planPipes(spec, meta.prefix, meta.dense, meta.riser) : [],
-    electrical: spec.includeMep
-      ? planElectrical(spec, meta.prefix, meta.dense, meta.riser)
-      : [],
+    pipes:
+      spec.includeMep && meta.occupiable
+        ? planPipes(spec, meta.prefix, meta.dense, meta.riser)
+        : [],
+    electrical:
+      spec.includeMep && meta.occupiable
+        ? planElectrical(spec, meta.prefix, meta.dense, meta.riser)
+        : [],
   };
 }
 
@@ -256,9 +351,8 @@ function defaultNotes(spec: BuildingSpec): string {
   return `Gemini spec · ${spec.width} × ${spec.depth} m · ${spec.stories} level${spec.stories === 1 ? "" : "s"} · ${spec.zones.length} zones.`;
 }
 
-function wallsFromSpec(spec: BuildingSpec, prefix: string, dense: boolean): Wall[] {
-  const height = spec.storyHeight;
-  const exterior = spec.exteriorColor
+function exteriorMaterial(spec: BuildingSpec) {
+  return spec.exteriorColor
     ? {
         color: spec.exteriorColor,
         roughness: 0.78,
@@ -266,6 +360,11 @@ function wallsFromSpec(spec: BuildingSpec, prefix: string, dense: boolean): Wall
         opacity: 1,
       }
     : defaultExterior(spec.typology);
+}
+
+function wallsFromSpec(spec: BuildingSpec, prefix: string, dense: boolean): Wall[] {
+  const height = spec.storyHeight;
+  const exterior = exteriorMaterial(spec);
 
   if (spec.footprint) {
     return wallsFromFootprint(spec, prefix, height, exterior, dense);

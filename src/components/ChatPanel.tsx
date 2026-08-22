@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentStatus, ModelSettings } from "../agent/modelSettings";
 import {
   PROVIDER_DEFAULTS,
+  hasStoredModelSettings,
   loadModelSettings,
+  preferredProvider,
   providerHasServerKey,
   saveModelSettings,
 } from "../agent/modelSettings";
@@ -49,8 +51,19 @@ export function ChatPanel() {
           return;
         }
         const next = (await response.json()) as AgentStatus;
-        if (!cancelled) {
-          setStatus(next);
+        if (cancelled) {
+          return;
+        }
+        setStatus(next);
+        // Open on whatever is actually configured, unless the user has already
+        // picked a provider for this session.
+        const preferred = preferredProvider(next);
+        if (preferred && !hasStoredModelSettings()) {
+          setSettings((current) =>
+            current.provider === preferred
+              ? current
+              : { ...current, provider: preferred, model: PROVIDER_DEFAULTS[preferred].model },
+          );
         }
       } catch {
         /* status stays unknown */

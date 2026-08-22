@@ -20,7 +20,7 @@ export interface ProviderConfig {
   apiKey: string;
 }
 
-const SYSTEM_PROMPT = `You are E-kon's construction orchestrator using Gemini 3.5 Flash on Replicate.
+export const SYSTEM_PROMPT = `You are E-kon's construction orchestrator using Gemini 3.5 Flash on Replicate.
 Never invent Three.js, glTF, or meshes. Return JSON only.
 
 If the user asks to build, create, or make a building — even by reference
@@ -36,10 +36,35 @@ Interpret the prompt literally:
 - Warehouse / fulfillment = deep rack hall, dock, staging, small office.
 - Office / HQ = lobby, open office, meeting, core, amenities.
 - House / apartment = living, kitchen, bedrooms, bath, hall. Smaller plate.
+- Tower / high-rise / landmark = slim plate, many stories, setbacks via massing.
+
+SHAPE IS YOURS TO CHOOSE. width and depth only ever make a plain rectangle, so
+use them for genuinely rectangular buildings. For anything else give a
+"footprint" and the plate is built from that outline instead:
+- footprint is an array of {x, y} points in meters, counter-clockwise, with the
+  origin at the outline's bottom-left. 4 to 24 points. Do NOT repeat the first
+  point at the end. Minimum 12 m² and no dimension over 400 m.
+- Reach for it whenever the plan is non-rectangular: L-shaped wings, a U around
+  a courtyard, a T or cross, a chamfered or angled corner, a curved frontage
+  (approximate the curve with 10–20 points), a tapered or trapezoidal site.
+- An L-shaped office might be:
+  [{"x":0,"y":0},{"x":40,"y":0},{"x":40,"y":14},{"x":18,"y":14},{"x":18,"y":30},{"x":0,"y":30}]
+
+For a building whose silhouette changes with height, add "massing": bands of
+extruded volume, bottom-up, each {minHeight, maxHeight, polygon} in the same
+coordinates as the footprint. Bands should touch (one band's maxHeight is the
+next band's minHeight) so the stack has no gaps, and upper polygons should sit
+inside lower ones so the setbacks read. Up to 16 bands. This is how you build a
+stepped tower rather than a straight extrusion.
+
+If the structure carries a spire, mast, or antenna above the roof, set
+"tipHeight" to the height of the tip in meters and it is drawn as a tapering
+mast. Leave it out for a flat-topped building.
 
 spec.zones are axis-aligned rectangles in meters from the origin. They must
 cover the plate without large empty holes. Each zone: id, name, x, y, w, h,
-kind (entry|sales|service|back|wet|circulation|living|work).
+kind (entry|sales|service|back|wet|circulation|living|work). Omit zones on a
+tower and a service core with a perimeter ring is laid out for you.
 
 {
   "agent": "construct" | "edit" | "extract" | "explain",
@@ -56,6 +81,11 @@ kind (entry|sales|service|back|wet|circulation|living|work).
     "exteriorColor": "#c8ccd1",
     "includeMep": true,
     "notes": "why this layout matches the prompt",
+    "footprint": [{ "x": 0, "y": 0 }],
+    "massing": [
+      { "minHeight": 0, "maxHeight": 24, "polygon": [{ "x": 0, "y": 0 }] }
+    ],
+    "tipHeight": 0,
     "zones": [
       { "id": "vestibule", "name": "Vestibule", "x": 28, "y": 0, "w": 16, "h": 8, "kind": "entry" }
     ]
@@ -63,13 +93,26 @@ kind (entry|sales|service|back|wet|circulation|living|work).
   "actions": []
 }
 
-For edits only, omit spec and use actions against existing IDs from the plan
-summary. Units are meters.`;
+Emit footprint, massing and tipHeight only when they add shape the rectangle
+cannot. For edits only, omit spec and use actions against existing IDs from the
+plan summary. Units are meters.`;
 
-export function envFlags(env: Record<string, string>): Record<ServerProvider, boolean> {
+/**
+ * Credentials the SDKs hold themselves rather than exposing as env vars. The
+ * Cursor SDK persists a minted key to `~/.cursor/sdk/auth.json` after
+ * `Cursor.auth.login()`, so a logged-in user has no `CURSOR_API_KEY` to find.
+ */
+export interface ProviderCredentials {
+  cursorLogin?: boolean;
+}
+
+export function envFlags(
+  env: Record<string, string>,
+  credentials: ProviderCredentials = {},
+): Record<ServerProvider, boolean> {
   return {
     replicate: Boolean(env.REPLICATE_API_TOKEN || env.REPLICATE_API_KEY),
-    cursor: Boolean(env.CURSOR_API_KEY),
+    cursor: Boolean(env.CURSOR_API_KEY) || Boolean(credentials.cursorLogin),
     gemini: Boolean(env.REPLICATE_API_TOKEN || env.REPLICATE_API_KEY),
     groq: Boolean(env.GROQ_API_KEY),
     openai: Boolean(env.OPENAI_API_KEY),
@@ -82,24 +125,70 @@ export function envFlags(env: Record<string, string>): Record<ServerProvider, bo
 export function resolveConfig(
   env: Record<string, string>,
   requested?: Partial<ProviderConfig>,
+  credentials: ProviderCredentials = {},
 ): ProviderConfig | null {
   const provider = (requested?.provider ??
     env.ECON_AGENT_PROVIDER ??
-    firstAvailable(env)) as ServerProvider | undefined;
+    firstAvailable(env, credentials)) as ServerProvider | undefined;
   if (!provider) {
     return null;
   }
-  const apiKey =
-    requested?.apiKey ||
-    envKey(env, provider);
-  if (provider !== "ollama" && !apiKey) {
+  const apiKey = requested?.apiKey || envKey(env, provider);
+  // Ollama is unauthenticated, and the Cursor SDK resolves its own stored login
+  // when no key is passed, so neither needs one up front.
+  const selfAuthenticating =
+    provider === "ollama" || (provider === "cursor" && Boolean(credentials.cursorLogin));
+  if (!selfAuthenticating && !apiKey) {
     return null;
   }
+  const model = requested?.model || env.ECON_AGENT_MODEL || defaultModel(provider);
   return {
     provider,
     apiKey,
-    model: requested?.model || env.ECON_AGENT_MODEL || defaultModel(provider),
+    // Normalized here so the model reported back to the client is the one that
+    // actually ran.
+    model:
+      provider === "replicate" || provider === "gemini" ? replicateModelPath(model) : model,
   };
+}
+
+/**
+ * Ollama only serves models that have actually been pulled, so asking for one
+ * it does not have fails the whole turn. Tags are optional in a request
+ * ("llama3.2") but always present in the install list ("llama3.2:latest").
+ */
+export function pickOllamaModel(
+  requested: string | undefined,
+  configured: string | undefined,
+  installed: string[],
+): string {
+  for (const candidate of [requested, configured]) {
+    if (!candidate) {
+      continue;
+    }
+    const match = installed.find(
+      (name) => name === candidate || name.split(":")[0] === candidate.split(":")[0],
+    );
+    if (match) {
+      return match;
+    }
+  }
+  return installed[0] ?? defaultModel("ollama");
+}
+
+/**
+ * Whether `npm run login:cursor` has left a usable credential behind. Never
+ * returns the key itself, and a missing or expired login reads as false rather
+ * than throwing so a logged-out machine still serves status.
+ */
+export async function probeCursorLogin(): Promise<boolean> {
+  try {
+    const { Cursor } = await import("@cursor/sdk");
+    const status = await Cursor.auth.status();
+    return status.status === "logged-in";
+  } catch {
+    return false;
+  }
 }
 
 export async function probeOllama(): Promise<{ up: boolean; models: string[] }> {
@@ -133,8 +222,11 @@ export async function completeJson(
   return { parsed, model: config.model, provider: config.provider };
 }
 
-function firstAvailable(env: Record<string, string>): ServerProvider | undefined {
-  const flags = envFlags(env);
+function firstAvailable(
+  env: Record<string, string>,
+  credentials: ProviderCredentials = {},
+): ServerProvider | undefined {
+  const flags = envFlags(env, credentials);
   const order: ServerProvider[] = [
     "replicate",
     "gemini",
@@ -260,7 +352,9 @@ async function completeCursor(
   const result = await Agent.prompt(
     `${SYSTEM_PROMPT}\n\nCurrent request:\n${user}\n\nReply with the JSON object only. Do not edit files.`,
     {
-      apiKey: config.apiKey,
+      // Omitted rather than empty so the SDK can fall back to CURSOR_API_KEY
+      // and then the stored `Cursor.auth.login()` key.
+      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
       model: { id: config.model },
       name: "E-kon construction planner",
       tools: [],
@@ -284,12 +378,22 @@ interface ReplicatePrediction {
   urls?: { get?: string };
 }
 
+/**
+ * Replicate's predictions endpoint is keyed by an `owner/model` path. Anything
+ * else — a bare name, or a `model:version` ref — would 404, so it falls back to
+ * the Gemini default rather than failing the turn.
+ */
+export function replicateModelPath(model: string | undefined): string {
+  return model && /^[^/\s]+\/[^/\s]+$/.test(model) ? model : REPLICATE_MODEL;
+}
+
 async function completeReplicateGemini(
   config: ProviderConfig,
   user: string,
 ): Promise<string> {
+  const model = replicateModelPath(config.model);
   const created = await fetch(
-    `https://api.replicate.com/v1/models/${REPLICATE_MODEL}/predictions`,
+    `https://api.replicate.com/v1/models/${model}/predictions`,
     {
       method: "POST",
       headers: {
@@ -330,9 +434,12 @@ async function completeReplicateGemini(
   if (prediction.status === "failed" || prediction.status === "canceled") {
     throw new Error(replicateError(prediction) || `Replicate ${prediction.status}`);
   }
+  if (prediction.status === "starting" || prediction.status === "processing") {
+    throw new Error(`${model} was still running after 60s on Replicate`);
+  }
   const content = joinReplicateOutput(prediction.output);
   if (!content) {
-    throw new Error("Replicate returned empty output from google/gemini-3.5-flash");
+    throw new Error(`Replicate returned empty output from ${model}`);
   }
   return content;
 }

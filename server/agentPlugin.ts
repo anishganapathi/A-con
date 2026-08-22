@@ -3,6 +3,8 @@ import { loadEnv, type Plugin, type ViteDevServer } from "vite";
 import {
   completeJson,
   envFlags,
+  pickOllamaModel,
+  probeCursorLogin,
   probeOllama,
   resolveConfig,
   type ServerProvider,
@@ -72,17 +74,26 @@ function envFrom(server: ViteDevServer): Record<string, string> {
 
 async function handleStatus(server: ViteDevServer, res: ServerResponse) {
   const env = envFrom(server);
-  const ollama = await probeOllama();
-  const flags = envFlags(env);
+  const [ollama, cursorLogin] = await Promise.all([probeOllama(), probeCursorLogin()]);
+  const flags = envFlags(env, { cursorLogin });
   flags.ollama = ollama.up;
   res.setHeader("Content-Type", "application/json");
   res.end(
     JSON.stringify({
       env: flags,
       ollama,
+      cursorLogin,
       defaultProvider:
         env.ECON_AGENT_PROVIDER ??
-        (flags.replicate ? "replicate" : flags.gemini ? "gemini" : "cursor"),
+        (flags.replicate
+          ? "replicate"
+          : flags.gemini
+            ? "gemini"
+            : flags.cursor
+              ? "cursor"
+              : ollama.up
+                ? "ollama"
+                : "cursor"),
     }),
   );
 }
@@ -103,18 +114,23 @@ async function handleAgent(
       apiKey?: string;
       model?: string;
     };
-    const ollama = await probeOllama();
-    let config = resolveConfig(env, {
-      provider: body.provider,
-      apiKey: body.apiKey,
-      model: body.model,
-    });
+    const [ollama, cursorLogin] = await Promise.all([probeOllama(), probeCursorLogin()]);
+    let config = resolveConfig(
+      env,
+      {
+        provider: body.provider,
+        apiKey: body.apiKey,
+        model: body.model,
+      },
+      { cursorLogin },
+    );
     if (!config && ollama.up) {
-      config = {
-        provider: "ollama",
-        apiKey: "",
-        model: body.model || env.ECON_AGENT_MODEL || ollama.models[0] || "llama3.2",
-      };
+      config = { provider: "ollama", apiKey: "", model: "" };
+    }
+    if (config?.provider === "ollama") {
+      // Ollama 404s on a model that was never pulled, so the name is always
+      // reconciled against the install list rather than trusted.
+      config.model = pickOllamaModel(body.model, env.ECON_AGENT_MODEL, ollama.models);
     }
     if (!config) {
       res.statusCode = 204;

@@ -102,7 +102,9 @@ const MAX_STORIES = 120;
 
 export function normalizeSpec(raw: Partial<BuildingSpec> | undefined): BuildingSpec {
   const typology = raw?.typology ?? "residential";
-  const footprint = normalizeFootprint(raw?.footprint);
+  const outline = fitOutline(raw?.footprint);
+  const footprint = outline?.ring;
+  const massing = normalizeMassing(raw?.massing, outline);
   const surveyed = Boolean(footprint);
 
   // Synthesized buildings stay in a sane envelope; surveyed ones use real values.
@@ -147,8 +149,8 @@ export function normalizeSpec(raw: Partial<BuildingSpec> | undefined): BuildingS
     zones: zones.length > 0 ? zones : fallbackZones,
     footprint,
     grossFloorAreaM2: raw?.grossFloorAreaM2,
-    massing: raw?.massing,
-    tipHeight: raw?.tipHeight,
+    massing,
+    tipHeight: normalizeTipHeight(raw?.tipHeight),
     survey: raw?.survey,
   };
 }
@@ -223,14 +225,158 @@ export function plateScales(
   });
 }
 
-function normalizeFootprint(raw: Point2D[] | undefined): Point2D[] | undefined {
-  if (!raw || raw.length < 4) {
+/** Beyond this a plate is a campus or a hallucination, not one building. */
+const MAX_OUTLINE_SPAN = 400;
+/** One wall per vertex per storey, so an over-detailed ring is thinned. */
+const MAX_OUTLINE_VERTICES = 24;
+const MIN_OUTLINE_AREA = 12;
+const MAX_MASSING_BANDS = 16;
+/** Taller than any structure on earth, with room to spare. */
+export const MAX_TIP_HEIGHT = 700;
+
+/**
+ * An outline the model drew, fitted for use as a building plate. The offset is
+ * kept because massing bands are quoted in the same coordinates and have to
+ * travel with it.
+ */
+interface FittedOutline {
+  ring: Point2D[];
+  shiftX: number;
+  shiftY: number;
+}
+
+/**
+ * Model-authored outlines arrive in any winding, anywhere on the plane, and
+ * sometimes closed like GeoJSON. Downstream code assumes a counter-clockwise
+ * ring whose bounding box starts at the origin, so fit it or reject it.
+ */
+function fitOutline(raw: Point2D[] | undefined): FittedOutline | undefined {
+  if (!raw || raw.length < 3) {
     return undefined;
   }
-  const points = raw
+  let ring = raw
     .filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))
     .map((point) => ({ x: point.x, y: point.y }));
-  return points.length >= 4 ? points : undefined;
+  ring = dropRepeatedPoints(ring);
+  if (ring.length < 3) {
+    return undefined;
+  }
+  ring = thinRing(ring, MAX_OUTLINE_VERTICES);
+  if (polygonArea(ring) < MIN_OUTLINE_AREA) {
+    return undefined;
+  }
+  const bounds = footprintBounds(ring);
+  if (Math.max(bounds.width, bounds.depth) > MAX_OUTLINE_SPAN) {
+    return undefined;
+  }
+  if (signedArea(ring) < 0) {
+    ring.reverse();
+  }
+  return {
+    ring: ring.map((point) => ({
+      x: round(point.x - bounds.minX),
+      y: round(point.y - bounds.minY),
+    })),
+    shiftX: bounds.minX,
+    shiftY: bounds.minY,
+  };
+}
+
+/**
+ * Bands describe setbacks and towers above the plate. Anything that cannot be
+ * extruded — no rise, or a polygon too thin to wall — is dropped rather than
+ * left to punch a hole in the stack.
+ */
+function normalizeMassing(
+  raw: MassingVolume[] | undefined,
+  outline: FittedOutline | undefined,
+): MassingVolume[] | undefined {
+  if (!raw || raw.length === 0) {
+    return undefined;
+  }
+  const bands: MassingVolume[] = [];
+  for (const volume of raw) {
+    const minHeight = Number(volume?.minHeight ?? 0);
+    const maxHeight = Number(volume?.maxHeight ?? 0);
+    if (!Number.isFinite(minHeight) || !Number.isFinite(maxHeight)) {
+      continue;
+    }
+    if (maxHeight <= minHeight + 0.5 || minHeight < 0) {
+      continue;
+    }
+    const polygon = dropRepeatedPoints(
+      (volume?.polygon ?? []).filter(
+        (point) => Number.isFinite(point?.x) && Number.isFinite(point?.y),
+      ),
+    );
+    if (polygon.length < 3 || polygonArea(polygon) < MIN_OUTLINE_AREA) {
+      continue;
+    }
+    const fitted = thinRing(polygon, MAX_OUTLINE_VERTICES).map((point) => ({
+      x: round(point.x - (outline?.shiftX ?? 0)),
+      y: round(point.y - (outline?.shiftY ?? 0)),
+    }));
+    if (signedArea(fitted) < 0) {
+      fitted.reverse();
+    }
+    bands.push({
+      id: volume?.id?.trim() || `band-${bands.length + 1}`,
+      polygon: fitted,
+      minHeight: round(Math.min(minHeight, MAX_TIP_HEIGHT)),
+      maxHeight: round(Math.min(maxHeight, MAX_TIP_HEIGHT)),
+      roofShape: volume?.roofShape ?? null,
+      roofHeight: Number.isFinite(volume?.roofHeight) ? volume.roofHeight : 0,
+    });
+  }
+  if (bands.length === 0) {
+    return undefined;
+  }
+  bands.sort((a, b) => a.minHeight - b.minHeight || a.maxHeight - b.maxHeight);
+  return bands.slice(0, MAX_MASSING_BANDS);
+}
+
+function normalizeTipHeight(raw: number | undefined): number | undefined {
+  if (raw === undefined || !Number.isFinite(raw) || raw <= 0) {
+    return undefined;
+  }
+  return round(Math.min(raw, MAX_TIP_HEIGHT));
+}
+
+function dropRepeatedPoints(points: Point2D[]): Point2D[] {
+  const kept: Point2D[] = [];
+  for (const point of points) {
+    const last = kept.at(-1);
+    if (last && Math.hypot(point.x - last.x, point.y - last.y) < 0.05) {
+      continue;
+    }
+    kept.push(point);
+  }
+  // A ring that repeats its first point to close itself leaves a zero-length wall.
+  const first = kept[0];
+  const last = kept.at(-1);
+  if (kept.length > 3 && first && last && Math.hypot(last.x - first.x, last.y - first.y) < 0.05) {
+    kept.pop();
+  }
+  return kept;
+}
+
+/** Keeps the gross shape while capping wall count, sampling evenly around the ring. */
+function thinRing(points: Point2D[], max: number): Point2D[] {
+  if (points.length <= max) {
+    return points;
+  }
+  const step = points.length / max;
+  return Array.from({ length: max }, (_, index) => points[Math.floor(index * step)]);
+}
+
+function signedArea(points: Point2D[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return sum / 2;
 }
 
 export function footprintBounds(points: Point2D[]) {
