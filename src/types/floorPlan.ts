@@ -93,6 +93,8 @@ export interface Roof {
   eaveHeight: number;
   ridgeHeight: number;
   overhang: number;
+  /** When false the live model keeps its roof data but does not draw it. */
+  visible?: boolean;
 }
 
 export interface DrawingSource {

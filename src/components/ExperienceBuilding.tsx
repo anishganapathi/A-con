@@ -55,7 +55,7 @@ export function ExperienceBuilding({ plan }: ExperienceBuildingProps) {
         <meshStandardMaterial color="#0a1014" roughness={0.9} metalness={0.2} />
         <Edges color={EDGE} threshold={20} />
       </mesh>
-      {construction.showRoof ? (
+      {construction.showRoof && plan.roof.visible !== false ? (
         <StandingSeamRoof
           roof={{
             ...plan.roof,

@@ -3,6 +3,7 @@ import type {
   FloorPlan,
   Opening,
   PipeRun,
+  Roof,
   Room,
   Selection,
   SurfaceMaterial,
@@ -14,6 +15,8 @@ export type AgentRole = "router" | "construct" | "edit" | "extract" | "explain";
 
 export type AgentAction =
   | { type: "replace_plan"; plan: FloorPlan; note: string }
+  | { type: "patch_roof"; patch: Partial<Roof> }
+  | { type: "resize_room"; roomId: string; areaSqM: number; stack?: boolean }
   | { type: "patch_wall"; wallId: string; patch: Partial<Wall> }
   | { type: "patch_room"; roomId: string; patch: Partial<Room> }
   | { type: "patch_opening"; openingId: string; patch: Partial<Opening> }
@@ -49,7 +52,7 @@ export interface ChatMessage {
   model?: string;
 }
 
-export type PlannerKind = "local" | "llm" | "gis";
+export type PlannerKind = "local" | "llm" | "gis" | "intent";
 
 export interface AgentTurn {
   agent: AgentRole;
@@ -64,6 +67,22 @@ export interface AgentTurn {
    * `specOptions` have been answered.
    */
   draftSpec?: BuildingSpec;
+  /** After an edit, one question the user can answer with a chip. */
+  followUp?: FollowUp;
+}
+
+export interface FollowUp {
+  prompt: string;
+  options: FollowUpOption[];
+}
+
+export interface FollowUpOption {
+  id: string;
+  label: string;
+  detail: string;
+  recommended?: boolean;
+  /** Sent back through the agent as the next user message. */
+  prompt?: string;
 }
 
 export interface BuildBrief {

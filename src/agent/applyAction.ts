@@ -12,6 +12,7 @@ import {
   patchRoomInPlan,
   patchWallInPlan,
   removeSelectionInPlan,
+  resizeRoomInPlan,
 } from "../editor/floorPlanEdits";
 import type { AgentAction } from "./types";
 
@@ -19,6 +20,12 @@ export function applyAgentAction(plan: FloorPlan, action: AgentAction): FloorPla
   switch (action.type) {
     case "replace_plan":
       return action.plan;
+    case "patch_roof":
+      return { ...plan, roof: { ...plan.roof, ...action.patch } };
+    case "resize_room":
+      return resizeRoomInPlan(plan, action.roomId, action.areaSqM, {
+        stack: action.stack,
+      });
     case "patch_wall":
       return patchWallInPlan(plan, action.wallId, action.patch);
     case "patch_room":
@@ -77,6 +84,12 @@ export function describeAction(action: AgentAction): string {
   switch (action.type) {
     case "replace_plan":
       return action.note;
+    case "patch_roof":
+      return action.patch.visible === false ? "Removed the roof" : "Updated the roof";
+    case "resize_room":
+      return action.stack === false
+        ? `Resized room ${action.roomId} to ${action.areaSqM} m² on that floor only`
+        : `Resized room ${action.roomId} to ${action.areaSqM} m² and stacked the supporting floors`;
     case "patch_wall":
       return `Updated wall ${action.wallId}`;
     case "patch_room":

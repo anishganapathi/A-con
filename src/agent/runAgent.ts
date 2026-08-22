@@ -1,8 +1,10 @@
 import type { FloorPlan } from "../types/floorPlan";
-import { describeAction } from "./applyAction";
+import { applyAgentAction, describeAction } from "./applyAction";
 import { inferSpecFromPrompt } from "./buildingSpec";
 import { compileSpec } from "./compileSpec";
 import { planEdits } from "./editAgent";
+import { narrateEdit } from "./followUp";
+import { actionsFromIntent, interpretIntent } from "./intentAgent";
 import {
   describeGis,
   fetchNycBuilding,
@@ -20,12 +22,18 @@ export async function runConstructionAgent(input: {
   attachments?: ChatAttachment[];
   settings?: ModelSettings;
   requireApi?: boolean;
+  locked?: boolean;
 }): Promise<AgentTurn> {
-  const role = route(input.text, input.attachments);
+  const role = resolveAgentRole(
+    input.text,
+    input.attachments,
+    input.locked,
+    input.plan,
+  );
 
   // A named NYC building is a survey, not a guess — resolve it from GIS and
   // skip the model entirely so the envelope stays measured.
-  if (role === "construct" && looksLikeNycLookup(input.text)) {
+  if (!input.locked && role === "construct" && looksLikeNycLookup(input.text)) {
     return runGisBuild(input.text);
   }
 
@@ -38,14 +46,49 @@ export async function runConstructionAgent(input: {
       settings: input.settings,
     });
     if (llm) {
-      return llm;
+      return input.locked ? lockWorkspaceTurn(llm) : llm;
     }
   } catch (error) {
     if (input.requireApi) {
       throw error;
     }
   }
-  return runLocal(role, input.text, input.plan, input.attachments ?? []);
+  const local = runLocal(role, input.text, input.plan, input.attachments ?? []);
+  return input.locked ? lockWorkspaceTurn(local) : local;
+}
+
+export function resolveAgentRole(
+  text: string,
+  attachments: ChatAttachment[] | undefined,
+  locked?: boolean,
+  plan?: FloorPlan,
+): AgentRole {
+  const role = interpretIntent(text, plan, attachments).role;
+  if (locked && (role === "construct" || role === "extract")) {
+    return "edit";
+  }
+  return role;
+}
+
+export function lockWorkspaceTurn(turn: AgentTurn): AgentTurn {
+  const actions = turn.actions.filter((action) => action.type !== "replace_plan");
+  const blockedRebuild = Boolean(turn.draftSpec) || actions.length !== turn.actions.length;
+  return {
+    ...turn,
+    agent: turn.agent === "construct" || turn.agent === "extract" ? "edit" : turn.agent,
+    actions,
+    draftSpec: undefined,
+    reply: blockedRebuild
+      ? lockedRebuildReply(turn.reply, actions.length > 0)
+      : turn.reply,
+  };
+}
+
+function lockedRebuildReply(reply: string, keptEdits: boolean): string {
+  const note = keptEdits
+    ? "The workspace is locked, so I applied edits to the current model instead of rebuilding it."
+    : "The workspace is locked. I can edit the current model, but I will not rebuild it. Unlock chat to construct a new building.";
+  return reply ? `${reply}\n\n${note}` : note;
 }
 
 async function runGisBuild(text: string): Promise<AgentTurn> {
@@ -74,31 +117,6 @@ async function runGisBuild(text: string): Promise<AgentTurn> {
       actions: [],
     };
   }
-}
-
-function route(text: string, attachments?: ChatAttachment[]): AgentRole {
-  const lower = text.toLowerCase();
-  if (
-    (attachments && attachments.length > 0) ||
-    /extract|from (?:the )?(?:drawing|sheet|pdf|scan|sketch)|upload/.test(lower)
-  ) {
-    return "extract";
-  }
-  if (
-    /build|construct|create|make|generate|new |commercial|retail|warehouse|store|supercenter|walmart|costco|target|office|apartment|house/.test(
-      lower,
-    )
-  ) {
-    return "construct";
-  }
-  if (
-    /add|move|delete|remove|rename|paint|color|thicken|set |raise|lower/.test(
-      lower,
-    )
-  ) {
-    return "edit";
-  }
-  return "explain";
 }
 
 function runLocal(
@@ -141,20 +159,30 @@ function runLocal(
   }
 
   if (agent === "edit") {
-    const actions = planEdits(text, plan);
-    if (actions.length === 0) {
+    const intent = interpretIntent(text, plan);
+    const actions =
+      intent.kind === "freeform" ? planEdits(text, plan) : actionsFromIntent(intent);
+    if (actions.length === 0 && intent.kind === "freeform") {
       return {
         agent,
         planner: "local",
-        reply: "I couldn’t map that edit. Try “paint exterior walls warmer”, “add a waste pipe to the kitchen”, “thicken exterior walls to 0.4”, or “rename Bathroom to Powder Room”.",
+        reply: "I couldn’t map that edit. Try “remove the roof”, “paint exterior walls warmer”, “add a waste pipe to the kitchen”, “thicken exterior walls to 0.4”, or “rename Bathroom to Powder Room”.",
         actions: [],
       };
     }
+    const after = actions.reduce(applyAgentAction, plan);
+    const story =
+      intent.kind === "freeform"
+        ? {
+            reply: `Edit agent applied ${actions.length} change${actions.length === 1 ? "" : "s"} to the live FloorPlan.`,
+          }
+        : narrateEdit(intent, plan, after);
     return {
       agent,
-      planner: "local",
-      reply: `Edit agent applied ${actions.length} change${actions.length === 1 ? "" : "s"} to the live FloorPlan.`,
+      planner: intent.kind === "freeform" ? "local" : "intent",
+      reply: story.reply,
       actions,
+      followUp: story.followUp,
     };
   }
 
@@ -166,7 +194,7 @@ function runLocal(
       "",
       summarizePlan(plan),
       "",
-      "Examples: “Build a 12×8 two-story house with 2 bedrooms”, “Add a supply pipe to the kitchen”, “Extract these sheets”.",
+      "Examples: “Build a 12×8 two-story house with 2 bedrooms”, “Increase the L3 living room size to 38 m”, “Add a supply pipe to the kitchen”, “Extract these sheets”.",
     ].join("\n"),
     actions: [],
   };

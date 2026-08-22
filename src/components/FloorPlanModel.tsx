@@ -26,6 +26,7 @@ export function BuildingModel({ plan, options }: BuildingModelProps) {
   // Setback towers taper, so the roof caps the top plate rather than the base.
   const roofBounds = lastFloor ? getFloorBounds(lastFloor) : bounds;
   const showRoof =
+    plan.roof.visible !== false &&
     construction.showRoof &&
     options.showRoof &&
     (options.showAllFloors || options.floorId === lastFloor?.id);

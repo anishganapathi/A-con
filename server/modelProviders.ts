@@ -95,7 +95,9 @@ tower and a service core with a perimeter ring is laid out for you.
 
 Emit footprint, massing and tipHeight only when they add shape the rectangle
 cannot. For edits only, omit spec and use actions against existing IDs from the
-plan summary. Units are meters.`;
+plan summary. To take the roof off the live model, emit
+{"type":"patch_roof","patch":{"visible":false}} — do not replace the plan.
+Units are meters.`;
 
 /**
  * Credentials the SDKs hold themselves rather than exposing as env vars. The

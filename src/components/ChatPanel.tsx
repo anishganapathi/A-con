@@ -11,7 +11,7 @@ import {
 import { actionLabels, runConstructionAgent } from "../agent/runAgent";
 import type { SpecOption } from "../agent/specOptions";
 import { applySpecChoice, buildSpecQuestions } from "../agent/specOptions";
-import type { ChatAttachment, ChatMessage } from "../agent/types";
+import type { ChatAttachment, ChatMessage, FollowUp, FollowUpOption } from "../agent/types";
 import { useConstruction } from "../editor/ConstructionContext";
 import { useEditor } from "../editor/EditorContext";
 
@@ -30,6 +30,8 @@ export function ChatPanel() {
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingBuild | null>(null);
+  const [followUp, setFollowUp] = useState<FollowUp | null>(null);
+  const [locked, setLocked] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const messageSeq = useRef(0);
   const questions = useMemo(
@@ -142,8 +144,40 @@ export function ChatPanel() {
     commitBuild(spec);
   };
 
+  const chooseFollowUp = (option: FollowUpOption) => {
+    if (option.prompt) {
+      void send(option.prompt);
+      return;
+    }
+    say({ role: "user", text: option.label });
+    setFollowUp(null);
+    say({ role: "assistant", agent: "edit", text: "Okay — leaving it." });
+  };
+
   const send = async (text: string) => {
     const trimmed = text.trim();
+    const chip = followUp?.options.find(
+      (option) => option.label.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (chip) {
+      chooseFollowUp(chip);
+      return;
+    }
+    if (followUp && /^(yes|yeah|yep|sure|ok|okay|do it|please)\.?$/i.test(trimmed)) {
+      const suggested =
+        followUp.options.find((option) => option.recommended && option.prompt) ??
+        followUp.options.find((option) => option.prompt);
+      if (suggested?.prompt) {
+        await send(suggested.prompt);
+        return;
+      }
+    }
+    if (followUp && /^(no|nah|nope|leave it|not now|skip|keep it)\.?$/i.test(trimmed)) {
+      say({ role: "user", text: trimmed });
+      setFollowUp(null);
+      say({ role: "assistant", agent: "edit", text: "Okay — leaving it." });
+      return;
+    }
     if ((!trimmed && files.length === 0) || busy) {
       return;
     }
@@ -164,6 +198,7 @@ export function ChatPanel() {
     setBusy(true);
     // A new prompt supersedes any half-answered proposal.
     setPending(null);
+    setFollowUp(null);
     try {
       const turn = await runConstructionAgent({
         text: userMessage.text,
@@ -171,9 +206,10 @@ export function ChatPanel() {
         attachments,
         settings,
         requireApi: apiReady,
+        locked,
       });
       const applied = applyAgentActions(turn.actions);
-      if (turn.actions.some((action) => action.type === "replace_plan")) {
+      if (!locked && turn.actions.some((action) => action.type === "replace_plan")) {
         startPlayback(12000);
       }
       say({
@@ -184,7 +220,10 @@ export function ChatPanel() {
         text: turn.reply,
         actions: applied.length > 0 ? actionLabels(turn) : undefined,
       });
-      if (turn.draftSpec) {
+      if (turn.followUp) {
+        setFollowUp(turn.followUp);
+      }
+      if (!locked && turn.draftSpec) {
         // A surveyed building has no questions to ask, so it goes up as-is.
         if (buildSpecQuestions(turn.draftSpec).length === 0) {
           commitBuild(turn.draftSpec);
@@ -212,7 +251,11 @@ export function ChatPanel() {
         <p className="view-kicker">Agent</p>
         <h1>Construction chat</h1>
         <p className={`chat-status ${apiReady ? "is-live" : ""}`}>
-          {apiReady ? "Live" : "Local rules · no model configured"}
+          {locked
+            ? "Locked · edits only"
+            : apiReady
+              ? "Live"
+              : "Local rules · no model configured"}
         </p>
       </header>
 
@@ -248,6 +291,29 @@ export function ChatPanel() {
             ) : null}
           </article>
         ))}
+        {followUp && !question ? (
+          <section className="chat-options" aria-label={followUp.prompt}>
+            <header className="chat-options-head">
+              <p className="chat-options-prompt">{followUp.prompt}</p>
+            </header>
+            <div className="chat-options-grid">
+              {followUp.options.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={
+                    option.recommended ? "chat-option is-suggested" : "chat-option"
+                  }
+                  onClick={() => chooseFollowUp(option)}
+                  disabled={busy}
+                >
+                  <span className="chat-option-label">{option.label}</span>
+                  <span className="chat-option-detail">{option.detail}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
         {question && pending ? (
           <section className="chat-options" aria-label={question.prompt}>
             <header className="chat-options-head">
@@ -301,7 +367,7 @@ export function ChatPanel() {
         <textarea
           value={draft}
           rows={3}
-          placeholder="Build, edit, or extract…"
+          placeholder={locked ? "Edit the current model…" : "Build, edit, or extract…"}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
@@ -311,18 +377,42 @@ export function ChatPanel() {
           }}
         />
         <div className="chat-form-actions">
-          <label className="chat-attach" title="Attach drawings">
-            <input
-              type="file"
-              accept="image/*,.pdf,.dwg"
-              multiple
-              onChange={(event) =>
-                setFiles(Array.from(event.target.files ?? []))
+          <div className="chat-form-tools">
+            <button
+              type="button"
+              className={locked ? "chat-lock is-on" : "chat-lock"}
+              aria-pressed={locked}
+              title={
+                locked
+                  ? "Unlock — allow constructing a new model"
+                  : "Lock — edit the current workspace without rebuilding"
               }
-            />
-            <PaperclipIcon />
-            Drawings
-          </label>
+              onClick={() => {
+                setLocked((current) => {
+                  const next = !current;
+                  if (next) {
+                    setPending(null);
+                  }
+                  return next;
+                });
+              }}
+            >
+              <LockIcon locked={locked} />
+              {locked ? "Locked" : "Lock"}
+            </button>
+            <label className="chat-attach" title="Attach drawings">
+              <input
+                type="file"
+                accept="image/*,.pdf,.dwg"
+                multiple
+                onChange={(event) =>
+                  setFiles(Array.from(event.target.files ?? []))
+                }
+              />
+              <PaperclipIcon />
+              Drawings
+            </label>
+          </div>
           <button
             type="submit"
             className="chat-send"
@@ -340,6 +430,19 @@ export function ChatPanel() {
 
 function round(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function LockIcon({ locked }: { locked: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      {locked ? (
+        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      ) : (
+        <path d="M8 11V8a4 4 0 0 1 7.5-2" />
+      )}
+    </svg>
+  );
 }
 
 function PaperclipIcon() {

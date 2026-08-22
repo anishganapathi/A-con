@@ -371,6 +371,413 @@ export function snapMeters(value: number, step = 0.05): number {
   return Math.round(value / step) * step;
 }
 
+const EDGE_EPS = 0.05;
+
+interface Aabb {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+type RoomEdge = { axis: "x" | "y"; side: "min" | "max" };
+
+/**
+ * Grows or shrinks a room as a real house would: push an exterior face when
+ * possible, keep neighbouring rooms, and if that face is a bearing wall, move
+ * the same face on every floor so the storeys stay stacked on the foundation.
+ */
+export function resizeRoomInPlan(
+  plan: FloorPlan,
+  roomId: string,
+  areaSqM: number,
+  options: { stack?: boolean } = {},
+): FloorPlan {
+  const target = Math.max(1, areaSqM);
+  const source = plan.floors.find((floor) =>
+    floor.rooms.some((entry) => entry.id === roomId),
+  );
+  const room = source?.rooms.find((entry) => entry.id === roomId);
+  if (!source || !room) {
+    return plan;
+  }
+  const box = aabbOf(room.boundary);
+  const plate = aabbOf(floorPoints(source));
+  const current = Math.max(0.01, (box.maxX - box.minX) * (box.maxY - box.minY));
+  const edge = pickGrowEdge(box, plate, target >= current);
+  const old = edgeCoord(box, edge);
+  const next = snapMeters(
+    old + slideDelta(edge, target - current, edgeLength(box, edge)),
+  );
+  if (Math.abs(next - old) < 0.001) {
+    return {
+      ...plan,
+      floors: plan.floors.map((floor) =>
+        floor.id === source.id
+          ? patchRoom(floor, room.id, { areaSqM: Number(target.toFixed(2)) })
+          : floor,
+      ),
+    };
+  }
+  const bearing =
+    options.stack !== false &&
+    nearly(old, edgeCoord(plate, edge)) &&
+    roomOwnsPlateSide(box, plate, edge);
+  if (bearing) {
+    const delta = next - old;
+    return {
+      ...plan,
+      floors: plan.floors.map((floor) => growStackedFacade(floor, edge, delta)),
+    };
+  }
+  return {
+    ...plan,
+    floors: plan.floors.map((floor) =>
+      floor.id === source.id
+        ? applyRoomEdgeMove(floor, room, edge, box, plate, old, next)
+        : floor,
+    ),
+  };
+}
+
+function growStackedFacade(floor: Floor, edge: RoomEdge, delta: number): Floor {
+  const plate = aabbOf(floorPoints(floor));
+  const old = edgeCoord(plate, edge);
+  const next = snapMeters(old + delta);
+  const facadeRoom = findRoomOnFacade(floor, edge, plate);
+  if (!facadeRoom) {
+    return shiftFacadeGeometry(floor, edge, old, next);
+  }
+  return applyRoomEdgeMove(
+    floor,
+    facadeRoom,
+    edge,
+    aabbOf(facadeRoom.boundary),
+    plate,
+    old,
+    next,
+  );
+}
+
+function findRoomOnFacade(floor: Floor, edge: RoomEdge, plate: Aabb): Room | undefined {
+  const face = edgeCoord(plate, edge);
+  let match: Room | undefined;
+  let span = -1;
+  for (const room of floor.rooms) {
+    const box = aabbOf(room.boundary);
+    if (!nearly(edgeCoord(box, edge), face)) {
+      continue;
+    }
+    const length = edgeLength(box, edge);
+    if (length > span) {
+      match = room;
+      span = length;
+    }
+  }
+  return match;
+}
+
+function shiftFacadeGeometry(
+  floor: Floor,
+  edge: RoomEdge,
+  old: number,
+  next: number,
+): Floor {
+  const plate = aabbOf(floorPoints(floor));
+  const shiftIf = (point: Point2D) =>
+    onInfiniteEdge(point, edge, old) ? shiftPoint(point, edge, old, next) : point;
+  return {
+    ...floor,
+    walls: floor.walls.map((wall) => ({
+      ...wall,
+      start: shiftIf(wall.start),
+      end: shiftIf(wall.end),
+    })),
+    pipes: floor.pipes.map((pipe) => ({
+      ...pipe,
+      points: adaptRoute(pipe.points, edge, old, next, plate),
+    })),
+    electrical: floor.electrical.map((run) => ({
+      ...run,
+      points: adaptRoute(run.points, edge, old, next, plate),
+    })),
+  };
+}
+
+function floorPoints(floor: Floor): Point2D[] {
+  return [
+    ...floor.walls.flatMap((wall) => [wall.start, wall.end]),
+    ...floor.rooms.flatMap((entry) => entry.boundary),
+  ];
+}
+
+function aabbOf(points: Point2D[]): Aabb {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+}
+
+function pickGrowEdge(room: Aabb, plate: Aabb, growing: boolean): RoomEdge {
+  const exterior: { edge: RoomEdge; length: number }[] = [];
+  const interior: { edge: RoomEdge; length: number }[] = [];
+  const consider = (edge: RoomEdge, length: number, outside: boolean) => {
+    (outside ? exterior : interior).push({ edge, length });
+  };
+  consider({ axis: "x", side: "min" }, room.maxY - room.minY, nearly(room.minX, plate.minX));
+  consider({ axis: "x", side: "max" }, room.maxY - room.minY, nearly(room.maxX, plate.maxX));
+  consider({ axis: "y", side: "min" }, room.maxX - room.minX, nearly(room.minY, plate.minY));
+  consider({ axis: "y", side: "max" }, room.maxX - room.minX, nearly(room.maxY, plate.maxY));
+  const byLength = (left: { length: number }, right: { length: number }) =>
+    right.length - left.length;
+  exterior.sort(byLength);
+  interior.sort(byLength);
+  const preferred = growing ? [...exterior, ...interior] : [...exterior, ...interior];
+  if (preferred[0]) {
+    return preferred[0].edge;
+  }
+  return room.maxX - room.minX >= room.maxY - room.minY
+    ? { axis: "y", side: "max" }
+    : { axis: "x", side: "max" };
+}
+
+function nearly(left: number, right: number): boolean {
+  return Math.abs(left - right) <= EDGE_EPS;
+}
+
+function applyRoomEdgeMove(
+  floor: Floor,
+  room: Room,
+  edge: RoomEdge,
+  box: Aabb,
+  plate: Aabb,
+  old: number,
+  next: number,
+): Floor {
+  const ownsFacade = roomOwnsPlateSide(box, plate, edge);
+  const onMovedEdge = (point: Point2D) =>
+    ownsFacade
+      ? onInfiniteEdge(point, edge, old)
+      : onRoomEdgeSegment(point, edge, box, old);
+  const shiftIf = (point: Point2D) =>
+    onMovedEdge(point) ? shiftPoint(point, edge, old, next) : point;
+  const exterior = nearly(edgeCoord(box, edge), edgeCoord(plate, edge));
+
+  return {
+    ...floor,
+    rooms: floor.rooms.map((entry) => {
+      if (entry.id === room.id) {
+        return shiftRoomEdge(entry, edge, old, next, (point) =>
+          onRoomEdgeSegment(point, edge, box, old),
+        );
+      }
+      if (exterior) {
+        return entry;
+      }
+      return shiftRoomEdge(entry, edge, old, next, (point) =>
+        onRoomEdgeSegment(point, edge, box, old),
+      );
+    }),
+    walls: floor.walls.map((wall) => ({
+      ...wall,
+      start: shiftIf(wall.start),
+      end: shiftIf(wall.end),
+    })),
+    pipes: floor.pipes.map((pipe) => ({
+      ...pipe,
+      points: adaptRoute(pipe.points, edge, old, next, box),
+    })),
+    electrical: floor.electrical.map((run) => ({
+      ...run,
+      points: adaptRoute(run.points, edge, old, next, box),
+    })),
+    dimensions: floor.dimensions.map((dimension) => {
+      const from = shiftIf(dimension.from);
+      const to = shiftIf(dimension.to);
+      if (from === dimension.from && to === dimension.to) {
+        return dimension;
+      }
+      const span = Math.hypot(to.x - from.x, to.y - from.y);
+      return { ...dimension, from, to, label: `${span.toFixed(2)} m` };
+    }),
+  };
+}
+
+function roomOwnsPlateSide(room: Aabb, plate: Aabb, edge: RoomEdge): boolean {
+  if (edge.axis === "y") {
+    return nearly(room.minX, plate.minX) && nearly(room.maxX, plate.maxX);
+  }
+  return nearly(room.minY, plate.minY) && nearly(room.maxY, plate.maxY);
+}
+
+function onInfiniteEdge(point: Point2D, edge: RoomEdge, old: number): boolean {
+  return edge.axis === "x" ? nearly(point.x, old) : nearly(point.y, old);
+}
+
+function onRoomEdgeSegment(
+  point: Point2D,
+  edge: RoomEdge,
+  box: Aabb,
+  old: number,
+): boolean {
+  if (!onInfiniteEdge(point, edge, old)) {
+    return false;
+  }
+  if (edge.axis === "y") {
+    return point.x >= box.minX - EDGE_EPS && point.x <= box.maxX + EDGE_EPS;
+  }
+  return point.y >= box.minY - EDGE_EPS && point.y <= box.maxY + EDGE_EPS;
+}
+
+function edgeCoord(box: Aabb, edge: RoomEdge): number {
+  if (edge.axis === "x") {
+    return edge.side === "min" ? box.minX : box.maxX;
+  }
+  return edge.side === "min" ? box.minY : box.maxY;
+}
+
+function edgeLength(box: Aabb, edge: RoomEdge): number {
+  return edge.axis === "x" ? box.maxY - box.minY : box.maxX - box.minX;
+}
+
+function slideDelta(edge: RoomEdge, deltaArea: number, length: number): number {
+  const travel = deltaArea / Math.max(length, 0.01);
+  return edge.side === "min" ? -travel : travel;
+}
+
+function shiftRoomEdge(
+  room: Room,
+  edge: RoomEdge,
+  old: number,
+  next: number,
+  take: (point: Point2D) => boolean,
+): Room {
+  const boundary = room.boundary.map((point) =>
+    take(point) ? shiftPoint(point, edge, old, next) : point,
+  );
+  if (boundary.every((point, index) => point === room.boundary[index])) {
+    return room;
+  }
+  const box = aabbOf(boundary);
+  const center = polygonCentroid(boundary);
+  return {
+    ...room,
+    boundary,
+    labelPosition: center,
+    areaSqM: Number(((box.maxX - box.minX) * (box.maxY - box.minY)).toFixed(2)),
+  };
+}
+
+/**
+ * Stretch MEP that already sits in the moved room, and if the plate grew,
+ * extend the run toward the new facade so lights and laterals don't die
+ * in the old volume.
+ */
+function adaptRoute<T extends Point2D>(
+  points: T[],
+  edge: RoomEdge,
+  old: number,
+  next: number,
+  region: Aabb,
+): T[] {
+  const mapped = points.map((point) => remapMepPoint(point, edge, old, next, region));
+  if (Math.abs(next - old) < 0.2) {
+    return mapped;
+  }
+  const growing = edge.side === "max" ? next > old : next < old;
+  if (!growing) {
+    return mapped;
+  }
+  const served = mapped.filter((point) => inRoomBand(point, edge, region, old, next));
+  if (served.length === 0) {
+    return mapped;
+  }
+  const along = (point: Point2D) => (edge.axis === "x" ? point.x : point.y);
+  const outermost = served.reduce((best, point) =>
+    Math.abs(along(point) - next) < Math.abs(along(best) - next) ? point : best,
+  );
+  if (Math.abs(along(outermost) - next) < 1.2) {
+    return mapped;
+  }
+  const inset = next + (edge.side === "max" ? -0.8 : 0.8);
+  const extra = (
+    edge.axis === "x"
+      ? { ...outermost, x: inset }
+      : { ...outermost, y: inset }
+  ) as T;
+  return [...mapped, extra];
+}
+
+function remapMepPoint<T extends Point2D>(
+  point: T,
+  edge: RoomEdge,
+  old: number,
+  next: number,
+  region: Aabb,
+): T {
+  if (!inCrossSpan(point, edge, region)) {
+    return point;
+  }
+  const along = edge.axis === "x" ? point.x : point.y;
+  const anchor = oppositeCoord(region, edge);
+  const lo = Math.min(anchor, old);
+  const hi = Math.max(anchor, old);
+  if (along < lo - EDGE_EPS || along > hi + EDGE_EPS) {
+    return point;
+  }
+  const span = old - anchor;
+  if (Math.abs(span) < 0.001) {
+    const moved = shiftPoint(point, edge, old, next);
+    return moved === point ? point : { ...point, ...moved };
+  }
+  const mapped = anchor + ((along - anchor) / span) * (next - anchor);
+  return edge.axis === "x" ? { ...point, x: mapped } : { ...point, y: mapped };
+}
+
+function inRoomBand(
+  point: Point2D,
+  edge: RoomEdge,
+  region: Aabb,
+  old: number,
+  next: number,
+): boolean {
+  if (!inCrossSpan(point, edge, region)) {
+    return false;
+  }
+  const along = edge.axis === "x" ? point.x : point.y;
+  const lo = Math.min(oppositeCoord(region, edge), old, next);
+  const hi = Math.max(oppositeCoord(region, edge), old, next);
+  return along >= lo - EDGE_EPS && along <= hi + EDGE_EPS;
+}
+
+function inCrossSpan(point: Point2D, edge: RoomEdge, region: Aabb): boolean {
+  if (edge.axis === "y") {
+    return point.x >= region.minX - EDGE_EPS && point.x <= region.maxX + EDGE_EPS;
+  }
+  return point.y >= region.minY - EDGE_EPS && point.y <= region.maxY + EDGE_EPS;
+}
+
+function oppositeCoord(box: Aabb, edge: RoomEdge): number {
+  if (edge.axis === "x") {
+    return edge.side === "min" ? box.maxX : box.minX;
+  }
+  return edge.side === "min" ? box.maxY : box.minY;
+}
+
+function shiftPoint(point: Point2D, edge: RoomEdge, old: number, next: number): Point2D {
+  if (edge.axis === "x" && Math.abs(point.x - old) <= EDGE_EPS) {
+    return { ...point, x: next };
+  }
+  if (edge.axis === "y" && Math.abs(point.y - old) <= EDGE_EPS) {
+    return { ...point, y: next };
+  }
+  return point;
+}
+
 export function polygonCentroid(points: Point2D[]): Point2D {
   if (points.length === 0) {
     return { x: 0, y: 0 };

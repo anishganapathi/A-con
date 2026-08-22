@@ -93,8 +93,37 @@ export function planEdits(text: string, plan: FloorPlan): AgentAction[] {
     }
   }
 
+  const resize = text.match(
+    /(?:increase|enlarge|resize|expand|grow|set|make|decrease|reduce|shrink)\s+(?:the\s+)?(.+?)\s+(?:size|area)\s+to\s+(\d+(?:\.\d+)?)/i,
+  );
+  if (resize?.[1] && resize[2]) {
+    const found = findNamed(plan, resize[1].replace(/\s+(?:size|area)$/i, ""));
+    if (found?.selection.kind === "room") {
+      const keepOtherFloors =
+        /keep(?:ing)?\s+(?:the\s+)?(?:remaining|other)\s+floors|only\s+(?:this|that)\s+floor|leave\s+(?:the\s+)?(?:other|remaining)\s+floors/i.test(
+          text,
+        );
+      actions.push({
+        type: "resize_room",
+        roomId: found.selection.id,
+        areaSqM: Number(resize[2]),
+        ...(keepOtherFloors ? { stack: false } : {}),
+      });
+    }
+  }
+
+  if (/\broof\b/.test(lower) && /(?:remove|delete|hide|take\s+off|without)\b/.test(lower)) {
+    actions.push({ type: "patch_roof", patch: { visible: false } });
+  } else if (
+    /\b(?:show|restore|unhide|put\s+back)\b.*\broof\b|\badd\s+(?:the\s+)?roof\b/.test(
+      lower,
+    )
+  ) {
+    actions.push({ type: "patch_roof", patch: { visible: true } });
+  }
+
   const removeMatch = text.match(/(?:delete|remove)\s+(?:the\s+)?(.+)$/i);
-  if (removeMatch?.[1]) {
+  if (removeMatch?.[1] && !/^roof\b/i.test(removeMatch[1].trim())) {
     const found = findNamed(plan, removeMatch[1].replace(/[.!]+$/, ""));
     if (found) {
       actions.push({ type: "remove", selection: found.selection });

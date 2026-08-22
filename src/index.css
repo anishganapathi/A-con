@@ -166,6 +166,7 @@
 .chat-form,
 .chat-send,
 .chat-attach,
+.chat-lock,
 .btn-ghost,
 .btn-danger {
   position: relative;
@@ -175,6 +176,7 @@
 .chat-form::before,
 .chat-send::before,
 .chat-attach::before,
+.chat-lock::before,
 .btn-ghost::before,
 .btn-danger::before {
   content: "";
@@ -194,6 +196,7 @@
 /* Liquid glass swells toward a press rather than just changing colour. */
 .chat-send,
 .chat-attach,
+.chat-lock,
 .btn-ghost,
 .btn-danger,
 .toggle,
@@ -204,6 +207,7 @@
 
 .chat-send:active:not(:disabled),
 .chat-attach:active,
+.chat-lock:active,
 .btn-ghost:active:not(:disabled),
 .btn-danger:active,
 .toggle:active,
@@ -305,6 +309,7 @@
 
   .chat-send,
   .chat-attach,
+  .chat-lock,
   .btn-ghost,
   .btn-danger,
   .toggle,
@@ -314,6 +319,7 @@
 
   .chat-send:active:not(:disabled),
   .chat-attach:active,
+  .chat-lock:active,
   .btn-ghost:active:not(:disabled),
   .btn-danger:active,
   .toggle:active,
@@ -1014,6 +1020,12 @@ textarea {
   gap: 8px;
 }
 
+.chat-form-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .chat-attach {
   position: relative;
   display: inline-flex;
@@ -1036,6 +1048,40 @@ textarea {
 
 .app-experience .chat-attach:hover {
   color: #e8f7f4;
+}
+
+.chat-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--glass-control);
+  box-shadow: var(--glass-edge-soft);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chat-lock:hover {
+  color: var(--ink);
+  box-shadow: var(--glass-edge-soft), 0 4px 12px rgba(28, 32, 38, 0.12);
+}
+
+.chat-lock.is-on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.app-experience .chat-lock:hover {
+  color: #e8f7f4;
+}
+
+.app-experience .chat-lock.is-on {
+  background: rgba(126, 224, 214, 0.16);
+  color: #7ee0d6;
 }
 
 .chat-attach input {
@@ -1079,6 +1125,7 @@ textarea {
 }
 
 .chat-attach svg,
+.chat-lock svg,
 .chat-send svg {
   width: 15px;
   height: 15px;
@@ -1196,7 +1243,8 @@ textarea {
 .btn-danger:focus-visible,
 .mode-tab:focus-visible,
 .chat-send:focus-visible,
-.chat-attach:focus-within {
+.chat-attach:focus-within,
+.chat-lock:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
