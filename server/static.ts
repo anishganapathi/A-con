@@ -27,9 +27,9 @@ const TYPES: Record<string, string> = {
 };
 
 /**
- * Maps a request path to a file inside the bundled renderer. Returns null when
- * the path tries to climb out of the root — a packaged app is reading the
- * user's own disk, so the root has to be enforced rather than assumed.
+ * Maps a request path to a file inside the built renderer. Returns null when
+ * the path tries to climb out of the root — the process is reading a real disk,
+ * so the root has to be enforced rather than assumed.
  */
 export function resolveStaticPath(root: string, urlPath: string): string | null {
   const bare = urlPath.split("?")[0].split("#")[0];

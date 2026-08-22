@@ -36,7 +36,9 @@ packaged app does not have. Rather than reimplement them, the handlers live in
 
 - **Development** — Vite serves the renderer and the API, as it always did.
 - **Packaged** — `electron/localServer.ts` serves the built renderer *and* those
-  same handlers over `http://127.0.0.1:<random port>`.
+  same handlers over `http://127.0.0.1:<random port>`. It is a thin wrapper over
+  `../server/httpServer.ts`, which the Linux deploy in `../deploy` also runs —
+  loopback and an ephemeral port are the only things specific to the desktop.
 
 Serving over HTTP rather than `file://` is deliberate: the app's own
 `fetch("/api/agent")` calls then resolve with no change to the app's code.

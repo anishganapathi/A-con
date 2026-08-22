@@ -23,6 +23,11 @@
     "vite.config.ts",
     "server/agentApi.ts",
     "server/agentPlugin.ts",
-    "server/modelProviders.ts"
+    "server/httpServer.ts",
+    "server/modelProviders.ts",
+    "server/localLlm.ts",
+    "server/masterIntent.ts",
+    "server/serve.ts",
+    "server/static.ts"
   ]
 }

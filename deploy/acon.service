@@ -1,0 +1,39 @@
+[Unit]
+Description=Acon — construction agent (renderer + agent API)
+Documentation=https://github.com/anishganapathi/A-con
+# The agent is useless without the vision box, but it should still come up and
+# report the model as down rather than refuse to start.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=acon
+WorkingDirectory=/opt/acon
+ExecStart=/usr/bin/node server/serve.ts
+
+Environment=NODE_ENV=production
+Environment=HOST=0.0.0.0
+Environment=PORT=4173
+# llama.cpp runs on this same machine. Set explicitly: the built-in default is a
+# specific LAN address, so leaving it unset makes the app depend on this box
+# keeping that exact IP.
+Environment=ECON_LOCAL_LLM_URL=http://127.0.0.1:8080/v1
+Environment=ECON_AGENT_PROVIDER=local
+
+Restart=on-failure
+RestartSec=2
+# Long vision requests must not be mistaken for a hung process.
+TimeoutStopSec=20
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/acon
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
