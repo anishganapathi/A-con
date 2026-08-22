@@ -98,6 +98,21 @@ export function defaultOpeningMaterial(opening: Opening): SurfaceMaterial {
   };
 }
 
+/**
+ * True while a surface still wears the colour it was born with. Plans routinely
+ * carry an explicit material that is simply the stock one, so the presence of a
+ * material says nothing about whether anyone actually chose a finish.
+ */
+export function isStockMaterial(
+  stored: SurfaceMaterial | undefined,
+  fallback: SurfaceMaterial,
+): boolean {
+  if (!stored) {
+    return true;
+  }
+  return stored.color.toLowerCase() === fallback.color.toLowerCase();
+}
+
 export function resolveMaterial(
   stored: SurfaceMaterial | undefined,
   fallback: SurfaceMaterial,

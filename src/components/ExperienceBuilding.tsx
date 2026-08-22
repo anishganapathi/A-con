@@ -7,6 +7,11 @@ import {
   openingsForWall,
 } from "./FloorPlanModel";
 import { useConstruction } from "../editor/ConstructionContext";
+import {
+  defaultOpeningMaterial,
+  defaultWallMaterial,
+  isStockMaterial,
+} from "../editor/materials";
 import { mixHex, shadeHex } from "../materials/color";
 import { FacadeGlazing } from "./FacadeGlazing";
 import { StandingSeamRoof } from "./StandingSeamRoof";
@@ -163,12 +168,15 @@ function ExperienceWall({
   const dirZ = length === 0 ? 0 : dz / length;
   const rotationY = Math.atan2(-dz, dx);
   const isExterior = wall.type === "exterior";
-  // Only a deliberate finish tints the building. Left alone, the wall keeps the
-  // night-render look rather than being repainted in its plan-view colour.
+  // Only a deliberate finish tints the building. Left on its stock colour, the
+  // wall keeps the night-render look rather than being repainted in its
+  // plan-view colour.
   const base = isExterior ? FILL : INTERIOR;
-  const finish = wall.material?.color;
-  const fill = finish ? mixHex(finish, base, NIGHT_MIX) : base;
-  const glow = finish ? shadeHex(finish, -0.35) : "#123038";
+  const chosen = isStockMaterial(wall.material, defaultWallMaterial(wall))
+    ? undefined
+    : wall.material;
+  const fill = chosen ? mixHex(chosen.color, base, NIGHT_MIX) : base;
+  const glow = chosen ? shadeHex(chosen.color, -0.35) : "#123038";
 
   return (
     <group>
@@ -194,8 +202,8 @@ function ExperienceWall({
             <boxGeometry args={[segLength, height, wall.thickness]} />
             <meshStandardMaterial
               color={fill}
-              roughness={wall.material?.roughness ?? 0.55}
-              metalness={wall.material?.metalness ?? 0.35}
+              roughness={chosen?.roughness ?? 0.55}
+              metalness={chosen?.metalness ?? 0.35}
               transparent={!isExterior}
               opacity={isExterior ? 1 : 0.28}
               emissive={isExterior ? glow : "#000000"}
@@ -207,7 +215,11 @@ function ExperienceWall({
       })}
       {openings.map((opening) => {
         const mid = opening.offsetFromStart + opening.width / 2;
-        const glazing = opening.type === "window" ? (opening.material?.color ?? GLASS) : "#2a1f1a";
+        const picked = isStockMaterial(opening.material, defaultOpeningMaterial(opening))
+          ? undefined
+          : opening.material;
+        const glazing =
+          opening.type === "window" ? (picked?.color ?? GLASS) : "#2a1f1a";
         return (
           <mesh
             key={opening.id}

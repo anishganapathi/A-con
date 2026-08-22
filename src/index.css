@@ -397,10 +397,31 @@ textarea {
   -webkit-app-region: drag;
 }
 
+/* Experience mode is a night scene, so the chrome follows it down. The traffic
+   lights are drawn by macOS and stay legible on a dark bar on their own. */
 .app-experience .title-bar {
-  background: rgba(250, 249, 246, 0.94);
-  border-bottom-color: rgba(31, 28, 25, 0.08);
-  color: var(--ink);
+  background: rgba(6, 12, 16, 0.92);
+  border-bottom-color: rgba(126, 224, 214, 0.16);
+  color: #d7eeea;
+}
+
+.app-experience .title-bar-name {
+  color: rgba(215, 238, 234, 0.66);
+}
+
+/* The mark is a single dark grey, so inverting it lands on a soft light grey
+   instead of the harsh white a forced fill would give. */
+.app-experience .title-bar-logo {
+  filter: invert(1);
+}
+
+.app-experience .title-bar-help {
+  color: rgba(215, 238, 234, 0.5);
+}
+
+.app-experience .title-bar-help:hover {
+  background: rgba(126, 224, 214, 0.12);
+  color: #e8f7f4;
 }
 
 .title-bar-brand {
