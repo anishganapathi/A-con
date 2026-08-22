@@ -1,5 +1,5 @@
 import type { FloorPlan, ViewOptions } from "../types/floorPlan";
-import { useEditor } from "../editor/EditorContext";
+import { RailSection } from "./RailSection";
 
 interface ViewControlsProps {
   floorPlan: FloorPlan;
@@ -12,19 +12,24 @@ export function ViewControls({
   options,
   onChange,
 }: ViewControlsProps) {
-  const { resetPlan, undo, redo, canUndo, canRedo } = useEditor();
   const patch = (partial: Partial<ViewOptions>) => {
     onChange({ ...options, ...partial });
   };
 
+  const floor = options.showAllFloors
+    ? "All floors"
+    : (floorPlan.floors.find((entry) => entry.id === options.floorId)?.name ?? "Floor");
+
   return (
     <aside className="view-panel" aria-label="View controls">
-      <header className="view-panel-header">
+      {/* Which drawing this is. Never folds away: it is the rail's identity. */}
+      <header className="rail-header">
         <p className="view-kicker">{floorPlan.source.sheet}</p>
         <h1>{floorPlan.name}</h1>
         <p className="view-units">{floorPlan.source.title}</p>
       </header>
 
+      <RailSection label="Display" value={floor}>
       <label className="view-field">
         <span>Floor</span>
         <select
@@ -91,27 +96,7 @@ export function ViewControls({
         Click a wall, floor, door, window, pipe, or wire to edit · Drag the gizmo to
         move · G move · R rotate · Delete to remove · ⌘Z / Ctrl+Z undo
       </p>
-      <div className="history-actions">
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={undo}
-          disabled={!canUndo}
-        >
-          Undo
-        </button>
-        <button
-          type="button"
-          className="btn-ghost"
-          onClick={redo}
-          disabled={!canRedo}
-        >
-          Redo
-        </button>
-      </div>
-      <button type="button" className="btn-ghost reset-plan" onClick={resetPlan}>
-        Reset plan
-      </button>
+      </RailSection>
     </aside>
   );
 }

@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BuildingSpec } from "../agent/buildingSpec";
 import { compileSpec } from "../agent/compileSpec";
@@ -14,6 +15,8 @@ import { applySpecChoice, buildSpecQuestions } from "../agent/specOptions";
 import type { ChatAttachment, ChatMessage, FollowUp, FollowUpOption } from "../agent/types";
 import { useConstruction } from "../editor/ConstructionContext";
 import { useEditor } from "../editor/EditorContext";
+import { SWEEP } from "./motionTokens";
+import { CollapseButton, PanelLauncher } from "./PanelCollapse";
 
 interface PendingBuild {
   spec: BuildingSpec;
@@ -29,6 +32,7 @@ export function ChatPanel() {
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(true);
   const [pending, setPending] = useState<PendingBuild | null>(null);
   const [followUp, setFollowUp] = useState<FollowUp | null>(null);
   const [locked, setLocked] = useState(false);
@@ -245,186 +249,219 @@ export function ChatPanel() {
     }
   };
 
+  // The panel and its handle cross over rather than queue — see LeftRail for why
+  // waiting on the outgoing animation is a trap.
   return (
-    <aside className="chat-panel" aria-label="Construction chat">
-      <header className="view-panel-header">
-        <p className="view-kicker">Agent</p>
-        <h1>Construction chat</h1>
-        <p className={`chat-status ${apiReady ? "is-live" : ""}`}>
-          {locked
-            ? "Locked · edits only"
-            : apiReady
-              ? "Live"
-              : "Local rules · no model configured"}
-        </p>
-      </header>
+    <AnimatePresence initial={false}>
+      {!open ? (
+        <PanelLauncher
+          key="handle"
+          side="right"
+          label="Show construction chat"
+          busy={busy}
+          onClick={() => setOpen(true)}
+        />
+      ) : (
+        <motion.aside
+          key="chat"
+          className="chat-panel"
+          aria-label="Construction chat"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 20 }}
+          transition={SWEEP}
+        >
+          <CollapseButton
+            side="right"
+            label="Hide construction chat"
+            onClick={() => setOpen(false)}
+          />
+          <header className="view-panel-header">
+            <p className="view-kicker">Agent</p>
+            <h1>Construction chat</h1>
+            <p className={`chat-status ${apiReady ? "is-live" : ""}`}>
+              {locked
+                ? "Locked · edits only"
+                : apiReady
+                  ? "Live"
+                  : "Local rules · no model configured"}
+            </p>
+          </header>
 
-      <div className="chat-log" ref={listRef}>
-        {messages.map((message) => (
-          <article
-            key={message.id}
-            className={
-              message.role === "user" ? "chat-bubble is-user" : "chat-bubble"
-            }
-          >
-            {message.agent ? (
-              <span className="chat-agent">
-                {message.agent}
-                {message.planner ? ` · ${message.planner}` : ""}
-                {message.model ? ` · ${message.model}` : ""}
-              </span>
+          <div className="chat-log" ref={listRef}>
+            {messages.map((message) => (
+              <article
+                key={message.id}
+                className={
+                  message.role === "user" ? "chat-bubble is-user" : "chat-bubble"
+                }
+              >
+                {message.agent ? (
+                  <span className="chat-agent">
+                    {message.agent}
+                    {message.planner ? ` · ${message.planner}` : ""}
+                    {message.model ? ` · ${message.model}` : ""}
+                  </span>
+                ) : null}
+                <p>{message.text}</p>
+                {message.attachments?.length ? (
+                  <ul className="chat-files">
+                    {message.attachments.map((file) => (
+                      <li key={file.name}>{file.name}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {message.actions?.length ? (
+                  <ul className="chat-actions">
+                    {message.actions.map((action) => (
+                      <li key={action}>{action}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+            ))}
+            {followUp && !question ? (
+              <section className="chat-options" aria-label={followUp.prompt}>
+                <header className="chat-options-head">
+                  <p className="chat-options-prompt">{followUp.prompt}</p>
+                </header>
+                <div className="chat-options-grid">
+                  {followUp.options.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={
+                        option.recommended
+                          ? "chat-option is-suggested"
+                          : "chat-option"
+                      }
+                      onClick={() => chooseFollowUp(option)}
+                      disabled={busy}
+                    >
+                      <span className="chat-option-label">{option.label}</span>
+                      <span className="chat-option-detail">{option.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
             ) : null}
-            <p>{message.text}</p>
-            {message.attachments?.length ? (
-              <ul className="chat-files">
-                {message.attachments.map((file) => (
-                  <li key={file.name}>{file.name}</li>
-                ))}
-              </ul>
-            ) : null}
-            {message.actions?.length ? (
-              <ul className="chat-actions">
-                {message.actions.map((action) => (
-                  <li key={action}>{action}</li>
-                ))}
-              </ul>
-            ) : null}
-          </article>
-        ))}
-        {followUp && !question ? (
-          <section className="chat-options" aria-label={followUp.prompt}>
-            <header className="chat-options-head">
-              <p className="chat-options-prompt">{followUp.prompt}</p>
-            </header>
-            <div className="chat-options-grid">
-              {followUp.options.map((option) => (
+            {question && pending ? (
+              <section className="chat-options" aria-label={question.prompt}>
+                <header className="chat-options-head">
+                  <p className="chat-options-prompt">{question.prompt}</p>
+                  <span className="chat-options-step">
+                    {pending.index + 1} / {questions.length}
+                  </span>
+                </header>
+                <div className="chat-options-grid">
+                  {question.options.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={
+                        option.recommended
+                          ? "chat-option is-suggested"
+                          : "chat-option"
+                      }
+                      onClick={() => choose(option)}
+                      disabled={busy}
+                    >
+                      <span className="chat-option-label">{option.label}</span>
+                      <span className="chat-option-detail">{option.detail}</span>
+                    </button>
+                  ))}
+                </div>
                 <button
-                  key={option.id}
                   type="button"
-                  className={
-                    option.recommended ? "chat-option is-suggested" : "chat-option"
-                  }
-                  onClick={() => chooseFollowUp(option)}
+                  className="chat-options-skip"
+                  onClick={acceptSuggested}
                   disabled={busy}
                 >
-                  <span className="chat-option-label">{option.label}</span>
-                  <span className="chat-option-detail">{option.detail}</span>
+                  Use suggested for the rest
                 </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-        {question && pending ? (
-          <section className="chat-options" aria-label={question.prompt}>
-            <header className="chat-options-head">
-              <p className="chat-options-prompt">{question.prompt}</p>
-              <span className="chat-options-step">
-                {pending.index + 1} / {questions.length}
-              </span>
-            </header>
-            <div className="chat-options-grid">
-              {question.options.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={
-                    option.recommended ? "chat-option is-suggested" : "chat-option"
-                  }
-                  onClick={() => choose(option)}
-                  disabled={busy}
-                >
-                  <span className="chat-option-label">{option.label}</span>
-                  <span className="chat-option-detail">{option.detail}</span>
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="chat-options-skip"
-              onClick={acceptSuggested}
-              disabled={busy}
-            >
-              Use suggested for the rest
-            </button>
-          </section>
-        ) : null}
-        {busy ? <p className="chat-pending">Agent working…</p> : null}
-      </div>
+              </section>
+            ) : null}
+            {busy ? <p className="chat-pending">Agent working…</p> : null}
+          </div>
 
-      {files.length > 0 ? (
-        <p className="chat-attached">
-          {files.length} drawing{files.length === 1 ? "" : "s"} attached
-        </p>
-      ) : null}
+          {files.length > 0 ? (
+            <p className="chat-attached">
+              {files.length} drawing{files.length === 1 ? "" : "s"} attached
+            </p>
+          ) : null}
 
-      <form
-        className="chat-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send(draft);
-        }}
-      >
-        <textarea
-          value={draft}
-          rows={3}
-          placeholder={locked ? "Edit the current model…" : "Build, edit, or extract…"}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
+          <form
+            className="chat-form"
+            onSubmit={(event) => {
               event.preventDefault();
               void send(draft);
-            }
-          }}
-        />
-        <div className="chat-form-actions">
-          <div className="chat-form-tools">
-            <button
-              type="button"
-              className={locked ? "chat-lock is-on" : "chat-lock"}
-              aria-pressed={locked}
-              title={
-                locked
-                  ? "Unlock — allow constructing a new model"
-                  : "Lock — edit the current workspace without rebuilding"
-              }
-              onClick={() => {
-                setLocked((current) => {
-                  const next = !current;
-                  if (next) {
-                    setPending(null);
-                  }
-                  return next;
-                });
-              }}
-            >
-              <LockIcon locked={locked} />
-              {locked ? "Locked" : "Lock"}
-            </button>
-            <label className="chat-attach" title="Attach drawings">
-              <input
-                type="file"
-                accept="image/*,.pdf,.dwg"
-                multiple
-                onChange={(event) =>
-                  setFiles(Array.from(event.target.files ?? []))
-                }
-              />
-              <PaperclipIcon />
-              Drawings
-            </label>
-          </div>
-          <button
-            type="submit"
-            className="chat-send"
-            disabled={busy || (!draft.trim() && files.length === 0)}
-            aria-label="Send"
-            title="Send · Enter"
+            }}
           >
-            <ArrowUpIcon />
-          </button>
-        </div>
-      </form>
-    </aside>
+            <textarea
+              value={draft}
+              rows={3}
+              placeholder={
+                locked ? "Edit the current model…" : "Build, edit, or extract…"
+              }
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void send(draft);
+                }
+              }}
+            />
+            <div className="chat-form-actions">
+              <div className="chat-form-tools">
+                <button
+                  type="button"
+                  className={locked ? "chat-lock is-on" : "chat-lock"}
+                  aria-pressed={locked}
+                  title={
+                    locked
+                      ? "Unlock — allow constructing a new model"
+                      : "Lock — edit the current workspace without rebuilding"
+                  }
+                  onClick={() => {
+                    setLocked((current) => {
+                      const next = !current;
+                      if (next) {
+                        setPending(null);
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  <LockIcon locked={locked} />
+                  {locked ? "Locked" : "Lock"}
+                </button>
+                <label className="chat-attach" title="Attach drawings">
+                  <input
+                    type="file"
+                    accept="image/*,.pdf,.dwg"
+                    multiple
+                    onChange={(event) =>
+                      setFiles(Array.from(event.target.files ?? []))
+                    }
+                  />
+                  <PaperclipIcon />
+                  Drawings
+                </label>
+              </div>
+              <button
+                type="submit"
+                className="chat-send"
+                disabled={busy || (!draft.trim() && files.length === 0)}
+                aria-label="Send"
+                title="Send · Enter"
+              >
+                <ArrowUpIcon />
+              </button>
+            </div>
+          </form>
+        </motion.aside>
+      )}
+    </AnimatePresence>
   );
 }
 

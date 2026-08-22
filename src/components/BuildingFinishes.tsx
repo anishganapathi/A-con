@@ -3,6 +3,7 @@ import { useEditor } from "../editor/EditorContext";
 import { currentFinish } from "../materials/applyPreset";
 import type { PresetSurface } from "../materials/presets";
 import { MaterialPresets } from "./MaterialPresets";
+import { RailSection } from "./RailSection";
 
 const TABS: { surface: PresetSurface; label: string }[] = [
   { surface: "facade", label: "Outer" },
@@ -23,13 +24,11 @@ export function BuildingFinishes() {
   const active = currentFinish(floorPlan, surface);
 
   return (
-    // Foldable: the rail also holds the view controls and the inspector, and on a
-    // short window something has to give way.
-    <details className="finishes-panel" open>
-      <summary className="finishes-summary">
-        <span className="view-kicker">Finishes</span>
-        <span className="finishes-current">{active ? active.name : "Custom"}</span>
-      </summary>
+    <RailSection
+      label="Finishes"
+      value={active ? active.name : "Custom"}
+      className="finishes-panel"
+    >
       <div className="finish-tabs" role="tablist">
         {TABS.map((tab) => (
           <button
@@ -51,6 +50,6 @@ export function BuildingFinishes() {
         activeId={active?.id}
         onPick={applyFinish}
       />
-    </details>
+    </RailSection>
   );
 }

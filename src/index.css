@@ -324,7 +324,14 @@
   .btn-ghost,
   .btn-danger,
   .toggle,
-  .mode-tab {
+  .mode-tab,
+  .mode-pill,
+  .app,
+  .title-bar,
+  .title-bar-logo,
+  .title-bar-name,
+  .title-bar-help,
+  .rail-section-summary {
     transition: none;
   }
 
@@ -373,12 +380,23 @@ textarea {
   flex-direction: column;
   width: 100%;
   height: 100%;
+  background: #dfe6ee;
+  /* Eases day into night while the two scenes dissolve, so the moment between
+     them is a change of light rather than a flash of empty stage. */
+  transition: background-color 0.45s ease, color 0.45s ease;
 }
 
 .app-stage {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* Each mode's scene and its chrome, as one thing to fade. Absolute so the panels
+   inside keep measuring themselves against the stage. */
+.stage-layer {
+  position: absolute;
+  inset: 0;
 }
 
 .app-experience {
@@ -401,6 +419,15 @@ textarea {
   -webkit-backdrop-filter: saturate(180%) blur(16px);
   backdrop-filter: saturate(180%) blur(16px);
   -webkit-app-region: drag;
+  /* Follows the stage down into experience mode at the same pace. */
+  transition: background-color 0.45s ease, border-bottom-color 0.45s ease,
+    color 0.45s ease;
+}
+
+.title-bar-logo,
+.title-bar-name,
+.title-bar-help {
+  transition: filter 0.45s ease, color 0.45s ease;
 }
 
 /* Experience mode is a night scene, so the chrome follows it down. The traffic
@@ -504,6 +531,7 @@ textarea {
 }
 
 .mode-tab {
+  position: relative;
   min-width: 118px;
   padding: 8px 16px;
   border: 0;
@@ -524,9 +552,24 @@ textarea {
 }
 
 .mode-tab.is-active {
-  background: #1f1c19;
   color: #f6f3ee;
+}
+
+/* The travelling pill. It is a layer behind the label rather than the tab's own
+   background, so it can slide from one tab to the other. */
+.mode-pill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 999px;
+  background: #1f1c19;
   box-shadow: 0 2px 8px rgba(28, 32, 38, 0.28);
+  transition: background 0.3s ease;
+}
+
+.mode-tab-label {
+  position: relative;
+  z-index: 1;
 }
 
 .app-experience .mode-tab {
@@ -534,8 +577,11 @@ textarea {
 }
 
 .app-experience .mode-tab.is-active {
-  background: #7ee0d6;
   color: #06201d;
+}
+
+.app-experience .mode-pill {
+  background: #7ee0d6;
 }
 
 .experience-hud {
@@ -615,10 +661,187 @@ textarea {
 
 .view-panel {
   flex: 0 0 auto;
-  padding: 18px 18px 14px;
 }
 
-.view-panel-header h1 {
+/* The drawing's identity, above the trays. The right gutter keeps text clear of
+   the collapse button pinned in the rail's corner. */
+.rail-header {
+  padding: 16px 42px 12px 18px;
+}
+
+/* One tray per section. The header carries the label whether or not the body is
+   showing, so a folded rail reads as a stack of named trays rather than a wall
+   of controls. */
+.rail-section {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--glass-border);
+}
+
+.rail-section-summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  /* Same gutter as the header: a scrolled tray's summary rides up under the
+     collapse button, and its value must not disappear behind it. */
+  padding: 9px 36px 9px 18px;
+  border: 0;
+  /* A tint on the header only, so section boundaries survive being scrolled. */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.rail-section-summary:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.06));
+}
+
+.rail-section-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.rail-section-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* What the tray holds, readable while it is closed. */
+.rail-section-value {
+  margin-left: auto;
+  overflow: hidden;
+  max-width: 55%;
+  color: var(--muted);
+  font-size: 10.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The chevron is turned by the same motion that unfolds the tray, so the two
+   read as one gesture. */
+.rail-chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* Clips the tray while its height eases between 0 and its content. */
+.rail-section-reveal {
+  overflow: hidden;
+}
+
+.rail-section-body {
+  padding: 2px 18px 14px;
+}
+
+.rail-footer {
+  flex: 0 0 auto;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--glass-border);
+}
+
+/* Folding a whole panel away. The button rides in the panel's corner; the
+   handle it leaves behind sits on the same edge, so the panel returns to where
+   it went. */
+.panel-collapse {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+/* Overrides the `> *` flow rule the glass panels put on their children. */
+.left-rail > .panel-collapse,
+.chat-panel > .panel-collapse {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+}
+
+.panel-collapse:hover {
+  background: var(--glass-control);
+  color: var(--ink);
+}
+
+.panel-collapse:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.panel-launcher {
+  position: absolute;
+  top: 20px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+  color: var(--muted);
+  cursor: pointer;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1), color 0.2s ease;
+}
+
+.panel-launcher.is-left {
+  left: 20px;
+}
+
+.panel-launcher.is-right {
+  right: 20px;
+}
+
+.panel-launcher:hover {
+  color: var(--ink);
+}
+
+.panel-launcher:active {
+  transform: scale(0.96);
+}
+
+.panel-launcher:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-experience .panel-launcher {
+  color: rgba(215, 238, 234, 0.62);
+}
+
+.app-experience .panel-launcher:hover {
+  color: #e8f7f4;
+}
+
+/* Work still running behind a folded panel. */
+.panel-launcher-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.view-panel-header h1,
+.rail-header h1 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
@@ -650,7 +873,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 16px 0 12px;
+  margin: 8px 0 12px;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
@@ -742,38 +965,8 @@ textarea {
 
 /* Finishes sit between the view controls and the inspector: a building-wide
    decision, above the per-object one. */
-/* Holds its own height — the grid inside is already capped, so the view panel
-   above is the one that scrolls when the window is short. */
 .finishes-panel {
-  flex: 0 0 auto;
   overflow: hidden;
-  padding: 10px 18px 12px;
-  border-top: 1px solid var(--glass-border);
-}
-
-.finishes-summary {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.finishes-summary::-webkit-details-marker {
-  display: none;
-}
-
-.finishes-summary .view-kicker {
-  margin: 0;
-}
-
-.finishes-current {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10.5px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .finish-tabs {
@@ -918,13 +1111,16 @@ textarea {
 }
 
 .inspector-panel {
-  flex: 0 0 auto;
-  padding: 14px 18px;
-  border-top: 1px solid var(--glass-border);
-  /* Slightly denser than the rail so the inspector reads as its own tray
-     without becoming a second card. */
+  /* Denser than the trays above it, so what is selected reads as the live tray
+     rather than one more row of controls. */
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0));
   box-shadow: var(--glass-edge-soft);
+}
+
+.inspector-id {
+  margin: 0 0 2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
 }
 
 .app-experience .inspector-panel {

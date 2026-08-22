@@ -1,11 +1,9 @@
-import { useEffect, useRef } from "react";
 import type {
   ElectricalRun,
   Opening,
   PipeRun,
   Room,
   SelectableKind,
-  Selection,
   SurfaceMaterial,
   Wall,
 } from "../types/floorPlan";
@@ -24,6 +22,7 @@ import {
   type PresetSurface,
 } from "../materials/presets";
 import { MaterialPresets } from "./MaterialPresets";
+import { RailSection } from "./RailSection";
 
 export function Inspector() {
   const {
@@ -43,33 +42,28 @@ export function Inspector() {
     removeSelected,
     select,
   } = useEditor();
-  const panel = useSelectionInView(selection);
-
   if (!selection) {
     return (
-      <aside ref={panel} className="inspector-panel" aria-label="Object inspector">
-        <p className="view-kicker">Inspector</p>
-        <h1>Nothing selected</h1>
+      <RailSection label="Selection" value="Nothing selected" className="inspector-panel">
         <p className="inspector-empty">
           Click a wall, floor, door, window, pipe, or wire run to move it,
           change its material, or delete it.
         </p>
-      </aside>
+      </RailSection>
     );
   }
 
   return (
-    <aside ref={panel} className="inspector-panel" aria-label="Object inspector">
-      <header className="view-panel-header">
-        <p className="view-kicker">Inspector</p>
-        <h1>
-          {titleForSelection(
-            selection.kind,
-            selectedRoom?.name ?? selectedPipe?.name ?? selectedElectrical?.name,
-          )}
-        </h1>
-        <p className="view-units">{selection.id}</p>
-      </header>
+    <RailSection
+      label="Selection"
+      value={titleForSelection(
+        selection.kind,
+        selectedRoom?.name ?? selectedPipe?.name ?? selectedElectrical?.name,
+      )}
+      openKey={`${selection.kind}:${selection.id}`}
+      className="inspector-panel"
+    >
+      <p className="view-units inspector-id">{selection.id}</p>
 
       {selectedWall || selectedRoom || selectedPipe || selectedElectrical ? (
         <div className="inspector-modes">
@@ -135,7 +129,7 @@ export function Inspector() {
           Deselect
         </button>
       </div>
-    </aside>
+    </RailSection>
   );
 }
 
@@ -387,25 +381,6 @@ function OpeningFields({
       />
     </div>
   );
-}
-
-/**
- * Clicking a wall in the model is a long way from the rail, and the inspector may
- * be below the fold, so a fresh selection brings itself into view. Keyed on what
- * is selected rather than on every edit, so dragging a slider does not scroll.
- */
-function useSelectionInView(selection: Selection | null) {
-  const panel = useRef<HTMLElement>(null);
-  const key = selection ? `${selection.kind}:${selection.id}` : null;
-
-  useEffect(() => {
-    if (!key) {
-      return;
-    }
-    panel.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [key]);
-
-  return panel;
 }
 
 function MaterialFields({
