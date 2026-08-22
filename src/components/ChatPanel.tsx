@@ -186,20 +186,9 @@ export function ChatPanel() {
           void send(draft);
         }}
       >
-        <label className="chat-attach">
-          <input
-            type="file"
-            accept="image/*,.pdf,.dwg"
-            multiple
-            onChange={(event) =>
-              setFiles(Array.from(event.target.files ?? []))
-            }
-          />
-          Drawings
-        </label>
         <textarea
           value={draft}
-          rows={2}
+          rows={3}
           placeholder="Build, edit, or extract…"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -209,11 +198,48 @@ export function ChatPanel() {
             }
           }}
         />
-        <button type="submit" className="btn-ghost" disabled={busy}>
-          Send
-        </button>
+        <div className="chat-form-actions">
+          <label className="chat-attach" title="Attach drawings">
+            <input
+              type="file"
+              accept="image/*,.pdf,.dwg"
+              multiple
+              onChange={(event) =>
+                setFiles(Array.from(event.target.files ?? []))
+              }
+            />
+            <PaperclipIcon />
+            Drawings
+          </label>
+          <button
+            type="submit"
+            className="chat-send"
+            disabled={busy || (!draft.trim() && files.length === 0)}
+            aria-label="Send"
+            title="Send · Enter"
+          >
+            <ArrowUpIcon />
+          </button>
+        </div>
       </form>
     </aside>
+  );
+}
+
+function PaperclipIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M20.5 11.5 12 20a5 5 0 0 1-7-7l8-8a3.5 3.5 0 0 1 5 5l-8 8a2 2 0 0 1-3-3l7-7" />
+    </svg>
+  );
+}
+
+function ArrowUpIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 19V5" />
+      <path d="m5 12 7-7 7 7" />
+    </svg>
   );
 }
 
