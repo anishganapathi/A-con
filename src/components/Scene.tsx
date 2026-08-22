@@ -1,9 +1,11 @@
 import { useMemo } from "react";
-import { ContactShadows, OrbitControls, OrthographicCamera, PerspectiveCamera } from "@react-three/drei";
+import { ContactShadows, OrthographicCamera, PerspectiveCamera } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { useEditor } from "../editor/EditorContext";
 import type { ViewOptions } from "../types/floorPlan";
 import { BuildingModel, getPlanBounds } from "./FloorPlanModel";
+import { PersistedOrbitControls, usePersistedView } from "./PersistedOrbitControls";
+import type { CameraPose } from "./cameraPose";
 
 interface SceneProps {
   options: ViewOptions;
@@ -36,12 +38,19 @@ export function Scene({ options }: SceneProps) {
       onPointerMissed={() => select(null)}
     >
       <color attach="background" args={["#d4dde6"]} />
-      <ViewCamera is2D={options.is2D} target={target} ridge={ridge} span={span} />
-      <Lights span={span} />
-      <OrbitControls
+      <ViewCamera
         key={options.is2D ? "ortho" : "persp"}
-        makeDefault
+        is2D={options.is2D}
         target={target}
+        ridge={ridge}
+        span={span}
+      />
+      <Lights span={span} />
+      <PersistedOrbitControls
+        key={options.is2D ? "ortho" : "persp"}
+        fallback={planFallbackView(target, ridge, span)}
+        persist={!options.is2D}
+        makeDefault
         enableDamping
         dampingFactor={0.08}
         enableRotate={!options.is2D}
@@ -105,7 +114,24 @@ interface ViewCameraProps {
   span: number;
 }
 
+function planFallbackView(
+  target: [number, number, number],
+  ridge: number,
+  span: number,
+): CameraPose {
+  return {
+    position: [
+      target[0] + span * 0.55,
+      Math.max(ridge * 0.85 + 8, span * 0.28),
+      target[2] + span * 0.62,
+    ],
+    target,
+  };
+}
+
 function ViewCamera({ is2D, target, ridge, span }: ViewCameraProps) {
+  const view = usePersistedView(planFallbackView(target, ridge, span));
+
   if (is2D) {
     return (
       <OrthographicCamera
@@ -123,11 +149,7 @@ function ViewCamera({ is2D, target, ridge, span }: ViewCameraProps) {
     <PerspectiveCamera
       key={`persp-${Math.round(span)}`}
       makeDefault
-      position={[
-        target[0] + span * 0.55,
-        Math.max(ridge * 0.85 + 8, span * 0.28),
-        target[2] + span * 0.62,
-      ]}
+      position={view.position}
       fov={38}
       near={0.1}
       far={Math.max(2000, span * 40)}

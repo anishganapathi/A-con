@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Grid, OrbitControls, PerspectiveCamera, Stars } from "@react-three/drei";
+import { Grid, PerspectiveCamera, Stars } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
   Bloom,
@@ -9,6 +9,8 @@ import {
 import type { DirectionalLight, Group } from "three";
 import { useEditor } from "../editor/EditorContext";
 import { ExperienceBuilding } from "./ExperienceBuilding";
+import { peekCameraPose } from "./cameraPose";
+import { PersistedOrbitControls, usePersistedView } from "./PersistedOrbitControls";
 import {
   createDriftPositions,
   getExperienceFraming,
@@ -20,6 +22,12 @@ export function ExperienceScene() {
   const { floorPlan } = useEditor();
   const framing = useMemo(() => getExperienceFraming(floorPlan), [floorPlan]);
   const { span, target } = framing;
+  const fallback = useMemo(
+    () => ({ position: framing.cameraPosition, target: framing.target }),
+    [framing],
+  );
+  const view = usePersistedView(fallback);
+  const holdView = useRef(peekCameraPose() !== null).current;
 
   return (
     <Canvas
@@ -33,17 +41,17 @@ export function ExperienceScene() {
       <PerspectiveCamera
         key={`persp-${Math.round(span)}`}
         makeDefault
-        position={framing.cameraPosition}
+        position={view.position}
         fov={36}
         near={0.1}
         far={framing.cameraFar}
       />
-      <OrbitControls
+      <PersistedOrbitControls
+        fallback={fallback}
         makeDefault
-        target={target}
         enableDamping
         dampingFactor={0.06}
-        autoRotate
+        autoRotate={!holdView}
         autoRotateSpeed={0.35}
         minDistance={framing.minDistance}
         maxDistance={framing.maxDistance}
