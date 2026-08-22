@@ -114,7 +114,9 @@ export function providerHasServerKey(
     return status.ollama.up;
   }
   if (provider === "local") {
-    return Boolean(status.local?.up || status.env.local);
+    // env.local only means the URL is configured. The box itself is what
+    // matters — a pinned-but-down GB10 must not look like a live planner.
+    return Boolean(status.local?.up);
   }
   return status.env[provider];
 }

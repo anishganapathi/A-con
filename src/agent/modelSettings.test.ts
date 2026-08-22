@@ -1,10 +1,17 @@
 import { describe, expect, test } from "vitest";
-import { preferredProvider, type AgentStatus, type ModelProvider } from "./modelSettings";
+import {
+  preferredProvider,
+  providerHasServerKey,
+  type AgentStatus,
+  type ModelProvider,
+} from "./modelSettings";
 
 function status(
   env: Partial<Record<ModelProvider, boolean>>,
-  options: { ollamaUp?: boolean; defaultProvider?: ModelProvider } = {},
+  options: { ollamaUp?: boolean; localUp?: boolean; defaultProvider?: ModelProvider } = {},
 ): AgentStatus {
+  const envLocal = env.local ?? false;
+  const localUp = options.localUp ?? envLocal;
   return {
     env: {
       replicate: false,
@@ -18,6 +25,7 @@ function status(
       ...env,
     },
     ollama: { up: options.ollamaUp ?? false, models: [] },
+    local: { up: localUp, url: "http://10.0.1.20:8080/v1", models: [] },
     defaultProvider: options.defaultProvider ?? "replicate",
   };
 }
@@ -59,6 +67,14 @@ describe("preferredProvider", () => {
 
   test("reports nothing when no provider is reachable", () => {
     expect(preferredProvider(status({}))).toBeNull();
+  });
+
+  test("does not treat a configured-but-down GB10 as ready", () => {
+    // .env can pin ECON_AGENT_PROVIDER=local while the box is off. That is a
+    // wish, not a live planner — the chat must drop to heuristics, not fetch.
+    const down = status({ local: true }, { localUp: false, defaultProvider: "local" });
+    expect(providerHasServerKey(down, "local")).toBe(false);
+    expect(preferredProvider(down)).toBeNull();
   });
 
   test("reports nothing before status has loaded", () => {

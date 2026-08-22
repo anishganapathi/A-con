@@ -1367,6 +1367,171 @@ textarea {
   outline-offset: 2px;
 }
 
+/* The background check. Warmer than the option cards and edged in amber, so it
+   reads as something to answer rather than something to browse. */
+.nemo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px 12px;
+  border: 1px solid rgba(196, 132, 36, 0.42);
+  border-radius: 14px;
+  background: linear-gradient(
+    162deg,
+    rgba(255, 233, 196, 0.58),
+    rgba(255, 246, 232, 0.34)
+  );
+  box-shadow: var(--glass-edge-soft), 0 8px 22px rgba(120, 82, 20, 0.12);
+}
+
+.app-experience .nemo-card {
+  border-color: rgba(240, 190, 110, 0.34);
+  background: linear-gradient(162deg, rgba(58, 44, 24, 0.62), rgba(20, 18, 14, 0.46));
+  color: #f6ead6;
+}
+
+.nemo-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nemo-mark {
+  flex-shrink: 0;
+  color: #8a5a12;
+}
+
+.app-experience .nemo-mark {
+  color: #f0be6e;
+}
+
+.nemo-brand {
+  color: #8a5a12;
+  font-size: 10px;
+  font-weight: 550;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.nemo-brand strong {
+  font-weight: 700;
+}
+
+.app-experience .nemo-brand {
+  color: #e8c48a;
+}
+
+/* Which of the two deformations this is. */
+.nemo-tag {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(196, 132, 36, 0.18);
+  color: #7a4e0c;
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nemo-tag.is-overhangs {
+  background: rgba(190, 68, 44, 0.16);
+  color: #9c3a22;
+}
+
+.app-experience .nemo-tag {
+  color: #f2d3a2;
+}
+
+.app-experience .nemo-tag.is-overhangs {
+  background: rgba(226, 108, 78, 0.2);
+  color: #f3b8a2;
+}
+
+.nemo-title {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 590;
+}
+
+.nemo-detail {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.app-experience .nemo-detail {
+  color: #cbb79a;
+}
+
+.nemo-ask {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.nemo-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.nemo-btn {
+  flex: 1 1 auto;
+  padding: 7px 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-control);
+  box-shadow: var(--glass-edge-soft);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1), box-shadow 0.24s ease,
+    background 0.24s ease;
+}
+
+/* Staying inside the shell is the safe answer, so it is the one that is ringed. */
+.nemo-btn.is-fit {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.nemo-btn.is-accept {
+  border-color: rgba(190, 68, 44, 0.38);
+}
+
+.nemo-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--glass-edge-soft), 0 6px 16px rgba(28, 32, 38, 0.14);
+}
+
+.nemo-btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.nemo-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.nemo-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-experience .nemo-btn {
+  color: #f6ead6;
+}
+
+.app-experience .nemo-btn.is-fit {
+  border-color: rgba(126, 224, 214, 0.5);
+  background: rgba(126, 224, 214, 0.16);
+}
+
 /* One tall composer: the field and its actions share a single surface so the
    textarea and buttons read as one control rather than three cramped columns. */
 .chat-form {

@@ -7,7 +7,7 @@ import {
   resolveConfig,
   type ServerProvider,
 } from "./modelProviders.ts";
-import { localLlmModel, probeLocalLlm } from "./localLlm.ts";
+import { dropUnreachableLocal, localLlmModel, probeLocalLlm } from "./localLlm.ts";
 import { lookupNycBuilding } from "./nycGis.ts";
 
 /**
@@ -86,11 +86,14 @@ export async function handleAgent(
       model?: string;
     };
     const [ollama, local] = await Promise.all([probeOllama(), probeLocalLlm(env)]);
-    let config = resolveConfig(env, {
-      provider: body.provider,
-      apiKey: body.apiKey,
-      model: body.model,
-    });
+    let config = dropUnreachableLocal(
+      resolveConfig(env, {
+        provider: body.provider,
+        apiKey: body.apiKey,
+        model: body.model,
+      }),
+      local,
+    );
     if (!config && local.up) {
       config = {
         provider: "local",

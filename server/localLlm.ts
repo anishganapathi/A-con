@@ -32,6 +32,32 @@ export function localLlmModel(env: Record<string, string> = {}, requested?: stri
   return requested || env.ECON_LOCAL_LLM_MODEL || env.ECON_AGENT_MODEL || DEFAULT_LOCAL_LLM_MODEL;
 }
 
+/**
+ * A local config is only usable if the probe just answered. Otherwise the next
+ * fetch throws a raw "fetch failed" and the chat shows that instead of falling
+ * back to the built-in rules.
+ */
+export function dropUnreachableLocal<T extends { provider: string } | null>(
+  config: T,
+  local: LocalLlmStatus,
+): T | null {
+  if (config && config.provider === "local" && !local.up) {
+    return null;
+  }
+  return config;
+}
+
+/** The undici TypeError is "fetch failed" — name the box so the chat is usable. */
+export function explainLocalFetchError(error: unknown, url: string): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EHOSTUNREACH|network/i.test(message)) {
+    return new Error(
+      `The local VL box at ${url} is not reachable. Turn the GB10 on, or comment out ECON_AGENT_PROVIDER=local in .env to use the built-in rules.`,
+    );
+  }
+  return error instanceof Error ? error : new Error(message);
+}
+
 export async function probeLocalLlm(
   env: Record<string, string> = {},
 ): Promise<LocalLlmStatus> {

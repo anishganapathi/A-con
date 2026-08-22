@@ -1,5 +1,6 @@
 import {
   buildVisionUserContent,
+  explainLocalFetchError,
   localLlmBaseUrl,
   localLlmModel,
   type VisionRequest,
@@ -331,18 +332,23 @@ async function postLocalChat(
     choices?: { message?: { content?: unknown; tool_calls?: unknown } }[];
   };
 }> {
-  const response = await fetch(endpoint(config), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: config.model,
-      // Greedy: reading a sheet has one right answer, and sampling makes the
-      // same drawing come back as a different house each time.
-      temperature: 0,
-      max_tokens: 4096,
-      ...body,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint(config), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: config.model,
+        // Greedy: reading a sheet has one right answer, and sampling makes the
+        // same drawing come back as a different house each time.
+        temperature: 0,
+        max_tokens: 4096,
+        ...body,
+      }),
+    });
+  } catch (error) {
+    throw explainLocalFetchError(error, config.baseUrl ?? localLlmBaseUrl({}));
+  }
   const payload = (await response.json().catch(() => ({}))) as {
     error?: { message?: string };
     choices?: { message?: { content?: unknown; tool_calls?: unknown } }[];

@@ -52,4 +52,14 @@ describe("intent agent", () => {
       areaSqM: 38,
     });
   });
+
+  test("reads an everyday grow-the-living-room line", () => {
+    const intent = interpretIntent("increase the living room to 40m", mockFloorPlan);
+    expect(intent).toMatchObject({
+      kind: "resize_room",
+      roomId: "living",
+      areaSqM: 40,
+      stack: true,
+    });
+  });
 });

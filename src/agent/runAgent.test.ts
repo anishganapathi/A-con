@@ -62,6 +62,19 @@ describe("lock mode", () => {
     expect(turn.actions.some((action) => action.type === "replace_plan")).toBe(false);
   });
 
+  test("a locked grow past the plate is still an edit, so Nemoclaw can hold it", async () => {
+    const turn = await runConstructionAgent({
+      text: "increase the living room to 40m",
+      plan: mockFloorPlan,
+      locked: true,
+    });
+
+    expect(turn.agent).toBe("edit");
+    expect(turn.actions).toEqual([
+      { type: "resize_room", roomId: "living", areaSqM: 40, stack: true },
+    ]);
+  });
+
   test("still applies live edits while locked", async () => {
     const turn = await runConstructionAgent({
       text: "paint exterior walls warmer",

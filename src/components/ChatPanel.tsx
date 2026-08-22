@@ -9,6 +9,9 @@ import {
   preferredProvider,
   providerHasServerKey,
 } from "../agent/modelSettings";
+import { describeAction } from "../agent/applyAction";
+import type { EditNotice } from "../agent/editReview";
+import { reviewEdits } from "../agent/editReview";
 import { actionLabels, runConstructionAgent } from "../agent/runAgent";
 import type { SpecOption } from "../agent/specOptions";
 import { applySpecChoice, buildSpecQuestions } from "../agent/specOptions";
@@ -16,6 +19,7 @@ import type { ChatAttachment, ChatMessage, FollowUp, FollowUpOption } from "../a
 import { useConstruction } from "../editor/ConstructionContext";
 import { useEditor } from "../editor/EditorContext";
 import { SWEEP } from "./motionTokens";
+import { NemoclawNotice } from "./NemoclawNotice";
 import { CollapseButton, PanelLauncher } from "./PanelCollapse";
 import { rememberDrawings } from "./referenceDrawings";
 
@@ -36,6 +40,7 @@ export function ChatPanel() {
   const [open, setOpen] = useState(true);
   const [pending, setPending] = useState<PendingBuild | null>(null);
   const [followUp, setFollowUp] = useState<FollowUp | null>(null);
+  const [review, setReview] = useState<EditNotice | null>(null);
   const [locked, setLocked] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const messageSeq = useRef(0);
@@ -46,7 +51,7 @@ export function ChatPanel() {
   const question = pending ? questions[pending.index] : undefined;
   const apiReady =
     settings.provider === "local"
-      ? Boolean(status?.local?.up || status?.env.local)
+      ? Boolean(status?.local?.up)
       : settings.provider === "ollama"
         ? Boolean(status?.ollama.up)
         : Boolean(settings.apiKey) || providerHasServerKey(status, settings.provider);
@@ -151,6 +156,31 @@ export function ChatPanel() {
     commitBuild(spec);
   };
 
+  const answerReview = (choice: "accept" | "fit" | "cancel") => {
+    if (!review || (choice === "fit" && !review.fitLabel)) {
+      return;
+    }
+    const label =
+      choice === "accept" ? "Accept" : choice === "fit" ? review.fitLabel! : "Decline";
+    say({ role: "user", text: label });
+    setReview(null);
+    if (choice === "cancel") {
+      say({ role: "assistant", agent: "edit", text: "Left the plan as it was." });
+      return;
+    }
+    const actions = choice === "accept" ? review.asked : review.trimmed;
+    const applied = applyAgentActions(actions);
+    say({
+      role: "assistant",
+      agent: "edit",
+      text:
+        choice === "accept"
+          ? "Done — the building has changed shape, so check the storeys above."
+          : `Done — kept inside the shell at ${review.fitLabel?.replace(/^(Keep|Use)\s+/, "")}.`,
+      actions: applied.length > 0 ? actions.map(describeAction) : undefined,
+    });
+  };
+
   const chooseFollowUp = (option: FollowUpOption) => {
     if (option.prompt) {
       void send(option.prompt);
@@ -205,6 +235,7 @@ export function ChatPanel() {
     // A new prompt supersedes any half-answered proposal.
     setPending(null);
     setFollowUp(null);
+    setReview(null);
     try {
       const turn = await runConstructionAgent({
         text: userMessage.text,
@@ -214,6 +245,20 @@ export function ChatPanel() {
         requireApi: apiReady,
         locked,
       });
+      // A change that would deform the building waits for an answer instead of
+      // landing quietly in the model.
+      const notice = reviewEdits(floorPlan, turn.actions);
+      if (notice) {
+        say({
+          role: "assistant",
+          agent: turn.agent,
+          planner: turn.planner,
+          model: turn.model,
+          text: turn.reply,
+        });
+        setReview(notice);
+        return;
+      }
       const applied = applyAgentActions(turn.actions);
       if (!locked && turn.actions.some((action) => action.type === "replace_plan")) {
         startPlayback(12000);
@@ -384,6 +429,15 @@ export function ChatPanel() {
                   Use suggested for the rest
                 </button>
               </section>
+            ) : null}
+            {review ? (
+              <NemoclawNotice
+                notice={review}
+                busy={busy}
+                onAccept={() => answerReview("accept")}
+                onFit={() => answerReview("fit")}
+                onCancel={() => answerReview("cancel")}
+              />
             ) : null}
             {busy ? <p className="chat-pending">Agent working…</p> : null}
           </div>

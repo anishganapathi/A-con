@@ -440,6 +440,105 @@ export function resizeRoomInPlan(
   };
 }
 
+export type RoomResizeOutcome =
+  /** The room is not in the plan, so there is nothing to say about it. */
+  | "missing"
+  /** Absorbed inside the existing plate: neighbours give way, the shell holds. */
+  | "fits"
+  /** The room owns that facade, so every storey's wall moves and the plan grows. */
+  | "grows-footprint"
+  /** Only this storey's wall moves, leaving the floors above it hanging in air. */
+  | "overhangs";
+
+export interface RoomResizePreview {
+  outcome: RoomResizeOutcome;
+  roomName: string;
+  floorName: string;
+  currentSqM: number;
+  requestedSqM: number;
+  /** The largest this room can reach without an exterior wall moving. */
+  maxAreaSqM: number;
+  /** How far the moved face travels, in metres. */
+  moveMeters: number;
+  /** How many storeys have a wall moved by this edit. */
+  storeys: number;
+  footprintBefore: number;
+  footprintAfter: number;
+}
+
+/**
+ * What `resizeRoomInPlan` would do, without doing it. It repeats that function's
+ * choice of edge on purpose: a warning drawn from different arithmetic than the
+ * edit would be worse than no warning at all.
+ */
+export function previewRoomResize(
+  plan: FloorPlan,
+  roomId: string,
+  areaSqM: number,
+  options: { stack?: boolean } = {},
+): RoomResizePreview {
+  const blank: RoomResizePreview = {
+    outcome: "missing",
+    roomName: roomId,
+    floorName: "",
+    currentSqM: 0,
+    requestedSqM: areaSqM,
+    maxAreaSqM: 0,
+    moveMeters: 0,
+    storeys: 0,
+    footprintBefore: 0,
+    footprintAfter: 0,
+  };
+  const target = Math.max(1, areaSqM);
+  const source = plan.floors.find((floor) =>
+    floor.rooms.some((entry) => entry.id === roomId),
+  );
+  const room = source?.rooms.find((entry) => entry.id === roomId);
+  if (!source || !room) {
+    return blank;
+  }
+  const box = aabbOf(room.boundary);
+  const plate = aabbOf(floorPoints(source));
+  const current = Math.max(0.01, (box.maxX - box.minX) * (box.maxY - box.minY));
+  const edge = pickGrowEdge(box, plate, target >= current);
+  const old = edgeCoord(box, edge);
+  const next = snapMeters(old + slideDelta(edge, target - current, edgeLength(box, edge)));
+  const reach = Math.abs(edgeCoord(plate, edge) - oppositeCoord(box, edge));
+  const base = {
+    ...blank,
+    roomName: room.name,
+    floorName: source.name,
+    currentSqM: round2(current),
+    maxAreaSqM: round2(edgeLength(box, edge) * reach),
+    moveMeters: round2(Math.abs(next - old)),
+  };
+  const outward = edge.side === "max" ? next > old : next < old;
+  const past = edge.side === "max"
+    ? next > edgeCoord(plate, edge) + EDGE_EPS
+    : next < edgeCoord(plate, edge) - EDGE_EPS;
+  if (!outward || !past) {
+    return { ...base, outcome: "fits", storeys: 0 };
+  }
+  const footprint = (bounds: Aabb) =>
+    round2((bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY));
+  const stacked =
+    options.stack !== false &&
+    nearly(old, edgeCoord(plate, edge)) &&
+    roomOwnsPlateSide(box, plate, edge);
+  const after = { ...plate, [edge.axis === "x" ? `${edge.side}X` : `${edge.side}Y`]: next };
+  return {
+    ...base,
+    outcome: stacked ? "grows-footprint" : "overhangs",
+    storeys: stacked ? plan.floors.length : 1,
+    footprintBefore: footprint(plate),
+    footprintAfter: footprint(after as Aabb),
+  };
+}
+
+function round2(value: number): number {
+  return Number(value.toFixed(2));
+}
+
 function growStackedFacade(floor: Floor, edge: RoomEdge, delta: number): Floor {
   const plate = aabbOf(floorPoints(floor));
   const old = edgeCoord(plate, edge);

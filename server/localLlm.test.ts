@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 import {
   DEFAULT_LOCAL_LLM_URL,
   buildVisionUserContent,
+  dropUnreachableLocal,
   editActionsOnly,
+  explainLocalFetchError,
   imageDataUrls,
   localLlmBaseUrl,
   localLlmModel,
@@ -28,6 +30,28 @@ describe("local VL endpoint", () => {
   test("uses the Qwen3-VL GGUF name unless another is set", () => {
     expect(localLlmModel({})).toMatch(/Qwen3VL/);
     expect(localLlmModel({ ECON_LOCAL_LLM_MODEL: "other.gguf" })).toBe("other.gguf");
+  });
+
+  test("drops a local config when the box did not answer the probe", () => {
+    expect(
+      dropUnreachableLocal(
+        { provider: "local", apiKey: "", model: "qwen", baseUrl: DEFAULT_LOCAL_LLM_URL },
+        { up: false, url: DEFAULT_LOCAL_LLM_URL, models: [] },
+      ),
+    ).toBeNull();
+  });
+
+  test("keeps a local config when the box is up", () => {
+    const config = { provider: "local" as const, apiKey: "", model: "qwen", baseUrl: DEFAULT_LOCAL_LLM_URL };
+    expect(dropUnreachableLocal(config, { up: true, url: DEFAULT_LOCAL_LLM_URL, models: [] })).toBe(
+      config,
+    );
+  });
+
+  test("names the box when fetch failed, instead of that raw TypeError", () => {
+    const error = explainLocalFetchError(new TypeError("fetch failed"), DEFAULT_LOCAL_LLM_URL);
+    expect(error.message).toMatch(/10\.0\.1\.20:8080/);
+    expect(error.message).not.toBe("fetch failed");
   });
 });
 

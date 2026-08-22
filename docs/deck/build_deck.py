@@ -3,6 +3,9 @@
 Mirrors the Figma template's grid: 1920x1080, 8 columns, generous margins,
 one idea per slide. Copy lives in acon-gb10-local-qwen-vl.md.
 
+Plain-language deck: describes what the product does and why it runs in-house,
+without implementation detail.
+
     python3 -m venv /tmp/deckvenv
     /tmp/deckvenv/bin/pip install python-pptx
     /tmp/deckvenv/bin/python docs/deck/build_deck.py
@@ -32,12 +35,12 @@ M = 0.8333
 COLW = (W - 2 * M) / 8
 
 
-def col(i: int) -> float:
+def col(i: float) -> float:
     """Left edge of grid column i."""
     return M + i * COLW
 
 
-def span(n: int) -> float:
+def span(n: float) -> float:
     return n * COLW
 
 
@@ -82,7 +85,7 @@ class Deck:
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.alignment = align
             p.space_after = Pt(after)
-            p.line_spacing = 1.18 if size < 20 else 1.02
+            p.line_spacing = 1.2 if size < 20 else 1.02
             run = p.add_run()
             run.text = body
             run.font.size = Pt(size)
@@ -111,15 +114,9 @@ class Deck:
     def cover(self, kicker, title, subtitle, meta_left, meta_right) -> None:
         s = self.slide(numbered=False)
         self.kicker(s, kicker, y=1.05)
-        self.text(
-            s, col(0), 2.05, span(6.4), 2.6,
-            [(title, 44, True, INK, 0)],
-        )
+        self.text(s, col(0), 2.05, span(6.4), 2.6, [(title, 42, True, INK, 0)])
         self.rule(s, col(0), 4.95, span(2))
-        self.text(
-            s, col(0), 5.25, span(4.6), 1.0,
-            [(subtitle, 13.5, False, MUTED, 0)],
-        )
+        self.text(s, col(0), 5.25, span(5.2), 1.2, [(subtitle, 13.5, False, MUTED, 0)])
         self.text(s, col(0), H - 0.9, span(3), 0.3, [(meta_left, 9.5, False, MUTED, 0)])
         self.text(
             s, col(6), H - 0.9, span(2), 0.3,
@@ -128,16 +125,12 @@ class Deck:
 
     def statement(self, line, footer=None, body=None) -> None:
         s = self.slide()
-        self.text(
-            s, col(0), 2.0, span(7), 3.0,
-            [(line, 34, True, INK, 0)],
-        )
-        y = 4.9
+        self.text(s, col(0), 1.75, span(7), 2.2, [(line, 32, True, INK, 0)])
         if body:
-            self.rule(s, col(0), y, span(1.4))
-            self.text(s, col(0), y + 0.3, span(4.4), 1.0, [(body, 13, False, MUTED, 0)])
+            self.rule(s, col(0), 4.3, span(1.4))
+            self.text(s, col(0), 4.6, span(6.4), 1.7, [(body, 12.5, False, MUTED, 0)])
         if footer:
-            self.text(s, col(0), H - 1.15, span(6), 0.3, [(footer, 10, False, MUTED, 0)])
+            self.text(s, col(0), H - 1.15, span(6.8), 0.4, [(footer, 10, False, MUTED, 0)])
 
     def divider(self, number, title) -> None:
         s = self.slide(dark=True)
@@ -160,48 +153,51 @@ class Deck:
     def two_col(self, kicker, headline, body, right_title, right_items) -> None:
         s = self.slide()
         self.kicker(s, kicker)
-        self.text(s, col(0), 1.35, span(4.4), 1.5, [(headline, 27, True, INK, 0)])
-        self.text(s, col(0), 3.15, span(4.0), 2.6, [(body, 12.5, False, MUTED, 0)])
+        self.text(s, col(0), 1.35, span(4.4), 1.5, [(headline, 26, True, INK, 0)])
+        self.text(s, col(0), 3.1, span(4.1), 2.8, [(body, 12.5, False, MUTED, 0)])
         self.rule(s, col(5), 1.4, span(3))
         self.text(
-            s, col(5), 1.6, span(3), 0.35,
-            [(right_title.upper(), 9.5, True, INK, 0)],
+            s, col(5), 1.6, span(3), 0.35, [(right_title.upper(), 9.5, True, INK, 0)]
         )
         y = 2.15
         for item in right_items:
             self.text(s, col(5), y, span(3), 0.55, [(item, 11.5, False, MUTED, 0)])
             y += 0.62
 
-    def cards(self, kicker, headline, cards, footer=None, per_row=None) -> None:
+    def cards(self, kicker, headline, cards, footer=None) -> None:
         s = self.slide()
         self.kicker(s, kicker)
-        self.text(s, col(0), 1.3, span(5.5), 0.9, [(headline, 27, True, INK, 0)])
-        n = per_row or len(cards)
+        self.text(s, col(0), 1.3, span(5.5), 0.9, [(headline, 26, True, INK, 0)])
+        n = len(cards)
         width = span(6.9) / n
         for i, (label, body) in enumerate(cards):
             x = col(0) + i * (width + span(0.12))
             self.rule(s, x, 2.7, width - 0.12, colour=ACCENT, thickness=0.022)
-            self.text(s, x, 2.95, width - 0.2, 0.4, [(label, 12, True, INK, 0)])
-            self.text(s, x, 3.55, width - 0.25, 2.4, [(body, 11, False, MUTED, 0)])
+            self.text(s, x, 2.95, width - 0.2, 0.5, [(label, 12, True, INK, 0)])
+            self.text(s, x, 3.6, width - 0.25, 2.4, [(body, 11, False, MUTED, 0)])
         if footer:
             self.text(s, col(0), H - 1.2, span(6.8), 0.5, [(footer, 10, False, MUTED, 0)])
 
     def bullets(self, kicker, headline, items, footer=None) -> None:
         s = self.slide()
         self.kicker(s, kicker)
-        self.text(s, col(0), 1.3, span(4.6), 1.3, [(headline, 27, True, INK, 0)])
-        y = 2.85
+        self.text(s, col(0), 1.3, span(4.6), 1.3, [(headline, 26, True, INK, 0)])
+        # Tighter rhythm once the list runs long, so six items still clear the footer.
+        crowded = len(items) > 5
+        y = 2.72 if crowded else 2.85
+        step = 0.67 if crowded else 0.78
+        size = 11.5 if crowded else 12
         for item in items:
-            self.rule(s, col(0), y - 0.14, span(6.6))
-            self.text(s, col(0), y, span(6.4), 0.6, [(item, 12, False, MUTED, 0)])
-            y += 0.78
+            self.rule(s, col(0), y - 0.13, span(6.6))
+            self.text(s, col(0), y, span(6.4), 0.55, [(item, size, False, MUTED, 0)])
+            y += step
         if footer:
             self.text(s, col(0), H - 1.1, span(6.6), 0.4, [(footer, 10, False, MUTED, 0)])
 
     def steps(self, kicker, headline, items) -> None:
         s = self.slide()
         self.kicker(s, kicker)
-        self.text(s, col(0), 1.3, span(5), 0.8, [(headline, 27, True, INK, 0)])
+        self.text(s, col(0), 1.3, span(5), 0.8, [(headline, 26, True, INK, 0)])
         width = span(6.9) / len(items)
         for i, (num, label, body) in enumerate(items):
             x = col(0) + i * (width + span(0.1))
@@ -213,35 +209,40 @@ class Deck:
     def compare(self, kicker, headline, left, right, note) -> None:
         s = self.slide()
         self.kicker(s, kicker)
-        self.text(s, col(0), 1.3, span(5), 0.8, [(headline, 27, True, INK, 0)])
+        self.text(s, col(0), 1.3, span(5), 0.8, [(headline, 26, True, INK, 0)])
         for i, (title, flow, tag, colour) in enumerate((left, right)):
             x = col(0) + i * span(3.6)
-            self.rule(s, x, 2.5, span(3.2), colour=RULE if i == 0 else ACCENT, thickness=0.022)
+            self.rule(
+                s, x, 2.5, span(3.2), colour=RULE if i == 0 else ACCENT, thickness=0.022
+            )
             self.text(s, x, 2.72, span(3), 0.35, [(title.upper(), 9.5, True, INK, 0)])
             y = 3.2
             for step in flow:
-                self.text(s, x, y, span(3), 0.4, [(step, 11.5, False, MUTED, 0)])
-                y += 0.42
-            self.text(s, x, y + 0.15, span(3), 0.4, [(tag, 11, True, colour, 0)])
+                self.text(s, x, y, span(3.1), 0.6, [(step, 11.5, False, MUTED, 0)])
+                y += 0.68
+            self.text(s, x, y + 0.1, span(3), 0.4, [(tag, 11, True, colour, 0)])
         self.text(s, col(0), H - 1.15, span(6.8), 0.5, [(note, 10, False, MUTED, 0)])
 
-    def do_dont(self, kicker, headline, do, dont) -> None:
+    def columns(self, kicker, headline, left, right) -> None:
+        """Two titled lists, side by side."""
         s = self.slide()
         self.kicker(s, kicker)
-        self.text(s, col(0), 1.3, span(5), 0.8, [(headline, 27, True, INK, 0)])
-        for i, (title, items, colour) in enumerate((("Do", do, ACCENT), ("Do not", dont, MUTED))):
+        self.text(s, col(0), 1.3, span(5), 0.8, [(headline, 26, True, INK, 0)])
+        for i, (title, items, colour) in enumerate(
+            ((left[0], left[1], ACCENT), (right[0], right[1], MUTED))
+        ):
             x = col(0) + i * span(3.6)
             self.rule(s, x, 2.35, span(3.2), colour=colour, thickness=0.022)
             self.text(s, x, 2.57, span(3), 0.35, [(title.upper(), 9.5, True, INK, 0)])
-            y = 2.98
+            y = 3.0
             for item in items:
-                self.text(s, x, y, span(3.1), 0.68, [(item, 10.5, False, MUTED, 0)])
-                y += 0.74
+                self.text(s, x, y, span(3.1), 0.68, [(item, 11, False, MUTED, 0)])
+                y += 0.82
 
     def table(self, kicker, headline, headers, rows) -> None:
         s = self.slide()
         self.kicker(s, kicker)
-        self.text(s, col(0), 1.3, span(5), 0.7, [(headline, 27, True, INK, 0)])
+        self.text(s, col(0), 1.3, span(5), 0.7, [(headline, 26, True, INK, 0)])
         xs = [col(0), col(2.9), col(5.2)]
         widths = [span(2.7), span(2.2), span(2.5)]
         self.rule(s, col(0), 2.4, span(7.7), colour=INK, thickness=0.014)
@@ -258,8 +259,8 @@ class Deck:
                     s, xs[i], y, widths[i], 0.4,
                     [(cell, 10.5, bold, INK if bold else MUTED, 0)],
                 )
-            self.rule(s, col(0), y + 0.32, span(7.7))
-            y += 0.46
+            self.rule(s, col(0), y + 0.4, span(7.7))
+            y += 0.54
 
     def stats(self, kicker, items, caption) -> None:
         s = self.slide()
@@ -267,15 +268,15 @@ class Deck:
         width = span(7.7) / len(items)
         for i, (value, label) in enumerate(items):
             x = col(0) + i * width
-            self.text(s, x, 2.6, width - 0.2, 1.0, [(value, 40, True, INK, 0)])
+            self.text(s, x, 2.6, width - 0.2, 1.0, [(value, 38, True, INK, 0)])
             self.rule(s, x, 3.75, width - 0.5)
-            self.text(s, x, 3.95, width - 0.35, 0.8, [(label, 11, False, MUTED, 0)])
+            self.text(s, x, 3.95, width - 0.35, 0.9, [(label, 11, False, MUTED, 0)])
         self.text(s, col(0), H - 1.15, span(6.8), 0.5, [(caption, 10, False, MUTED, 0)])
 
     def roadmap(self, kicker, headline, phases) -> None:
         s = self.slide()
         self.kicker(s, kicker)
-        self.text(s, col(0), 1.3, span(5), 0.8, [(headline, 27, True, INK, 0)])
+        self.text(s, col(0), 1.3, span(5), 0.8, [(headline, 26, True, INK, 0)])
         width = span(7.7) / len(phases)
         self.rule(s, col(0), 2.65, span(7.7), colour=INK, thickness=0.014)
         for i, (phase, title, body) in enumerate(phases):
@@ -286,10 +287,10 @@ class Deck:
 
     def close(self, big, line) -> None:
         s = self.slide(dark=True, numbered=False)
-        self.text(s, col(0), 2.7, span(6), 1.4, [(big, 60, True, PAPER_ON_INK, 0)])
+        self.text(s, col(0), 2.7, span(6), 1.4, [(big, 58, True, PAPER_ON_INK, 0)])
         self.rule(s, col(0), 4.35, span(1.2), colour=ACCENT, thickness=0.03)
         self.text(
-            s, col(0), 4.7, span(6), 0.6,
+            s, col(0), 4.7, span(6), 0.8,
             [(line, 12.5, False, RGBColor(0xA9, 0xA5, 0x9C), 0)],
         )
 
@@ -301,9 +302,10 @@ d = Deck()
 
 d.cover(
     "Acon x Dell Pro Max GB10",
-    "Automated 3D building generation, entirely on-premises.",
-    "Drawings in, measured 3D out. Qwen-VL running locally on Dell Pro Max with "
-    "GB10 \u2014 no Gemini, no cloud.",
+    "Buildings, generated automatically \u2014 inside your own office.",
+    "Acon turns a description, or a set of drawings, into a working 3D building. "
+    "With Dell Pro Max GB10 it does that on our own hardware, and nothing ever "
+    "leaves the building.",
     "Integration proposal",
     "August 2026",
 )
@@ -311,18 +313,23 @@ d.cover(
 d.statement(
     "Nothing on the market does this without sending your drawings to someone "
     "else's cloud.",
-    footer="Acon \u00b7 automated document-to-3D \u00b7 NVIDIA GB10 Grace Blackwell",
+    body="Some tools produce a shape you cannot build from. Others wait for a "
+    "person to model everything by hand. None of them will read the drawings you "
+    "were actually issued. And every one of them runs on somebody else's "
+    "servers. Acon reads the drawings, produces a building you can measure and "
+    "change, and does it on a machine that sits in the office.",
+    footer="Acon \u00b7 automatic building generation \u00b7 Dell Pro Max with GB10",
 )
 
 d.contents(
     "Agenda",
     [
-        ("01", "The product", "What Acon does today"),
-        ("02", "The gap", "Why this category is empty"),
-        ("03", "The constraint", "Confidential drawings"),
+        ("01", "The product", "What Acon does"),
+        ("02", "The difference", "Why nothing else does this"),
+        ("03", "The reason", "Why it has to stay in-house"),
         ("04", "The machine", "Dell Pro Max with GB10"),
-        ("05", "The models", "Qwen-VL, running locally"),
-        ("06", "The plan", "Ship path, risks, and the ask"),
+        ("05", "The models", "Reading drawings, locally"),
+        ("06", "The plan", "What we need, and what happens next"),
     ],
 )
 
@@ -330,100 +337,145 @@ d.divider("01", "The product")
 
 d.two_col(
     "01 \u2014 The product",
-    "A prompt or a drawing set becomes a measured building.",
-    "Acon is a construction orchestrator, not a CAD plugin. It reads intent "
-    "\u2014 \u201ca Walmart supercenter\u201d, \u201ca two-storey clinic\u201d "
-    "\u2014 or ingests uploaded sheets, and returns a strict JSON spec: "
-    "footprint, massing bands, zones, storey heights, MEP runs. The scene "
-    "compiles that spec into 3D. The model never authors geometry; it only ever "
-    "emits the schema.",
-    "In the product today",
+    "Describe a building, or hand it a drawing set.",
+    "Acon is an assistant that actually produces the model. Tell it what you "
+    "want in plain words, or give it the drawings for a project, and it builds "
+    "a complete 3D building: floors, rooms, walls, doors and windows, and the "
+    "services running through them. Everything is dimensioned, so it can be "
+    "measured and used \u2014 and anything can be changed afterwards just by "
+    "asking.",
+    "What you can ask it for",
     [
-        "Construct \u2014 prompt to building",
-        "Extract \u2014 PDF, DWG, or scan to draft model",
-        "Edit \u2014 natural-language changes on the live model",
-        "Explain \u2014 query the model on screen",
-        "GIS \u2014 address to measured envelope, no LLM",
+        "Describe a building and get one",
+        "Hand over drawings and get a model",
+        "Change anything by asking",
+        "Ask questions about what's on screen",
+        "Look up a real address and get its outline",
     ],
 )
 
 d.statement(
-    "\u201cAutomated\u201d is the word doing the work.",
-    body="Not assisted. No modelling session, no template library, no drafter in "
-    "the loop. One pass from document to dimensioned 3D \u2014 and the result is "
-    "editable, not a render.",
+    "Automated means automated.",
+    body="No modelling session. No template to choose from. No one working "
+    "through the sheets by hand. One pass from the documents we already have to "
+    "a building we can walk through \u2014 and it stays editable afterwards.",
 )
 
-d.divider("02", "The gap")
+d.divider("02", "The difference")
 
 d.cards(
-    "02 \u2014 The gap",
-    "Nothing occupies this cell.",
+    "02 \u2014 The difference",
+    "Why nothing else does this.",
     [
         (
-            "01 \u00b7 BIM authoring",
-            "Revit, Archicad. Powerful and manual: a human models the building. "
-            "The AI features that exist are cloud add-ons.",
+            "Design software",
+            "Powerful, but somebody still has to draw the entire building. The "
+            "AI features that exist run as online services.",
         ),
         (
-            "02 \u00b7 Generative site tools",
-            "TestFit, Autodesk Forma. Parametric massing for feasibility. They "
-            "don't read your issued drawing set, and they run as SaaS.",
+            "Early-stage layout tools",
+            "Useful for quick studies of what fits on a site. They won't read "
+            "an issued drawing set, and they run in the cloud.",
         ),
         (
-            "03 \u00b7 LLM chat products",
-            "Will happily describe a building. Won't return a dimensioned, "
-            "editable model \u2014 and the weights are always hosted.",
+            "AI chat products",
+            "They will happily describe a building. They can't hand you one you "
+            "can measure, cost, or edit.",
         ),
         (
-            "04 \u00b7 Scan-to-BIM services",
-            "Accurate, but a paid service with turnaround in days, and your "
-            "files leave the firm to get there.",
+            "Drawing-to-model services",
+            "Accurate, but the files are sent away to another company and the "
+            "result comes back days later.",
         ),
     ],
-    footer="The empty cell is ours: automated document-to-3D, executing on "
-    "hardware the firm owns.",
+    footer="The gap: a building produced automatically, from our own documents, "
+    "on our own equipment.",
 )
 
-d.divider("03", "The constraint")
+d.two_col(
+    "02 \u2014 The difference",
+    "It doesn't draw the building. It decides what the building is.",
+    "This is the part that makes everything else work. Other tools try to "
+    "generate the shape itself, and what comes back is a picture or a lump of "
+    "geometry \u2014 nothing anyone can build from. Acon splits the job in two. "
+    "The model decides what the building should be: how big, how many floors, "
+    "which rooms sit where. The software then constructs it precisely from those "
+    "decisions. That is why the result behaves like a building instead of a "
+    "render.",
+    "Why that matters",
+    [
+        "Every dimension is a real dimension",
+        "Nothing is guessed into place",
+        "Same result from words, drawings, or an address",
+        "The model can be swapped without breaking it",
+        "The building stays editable afterwards",
+    ],
+)
+
+d.bullets(
+    "02 \u2014 The difference",
+    "What comes out that no other tool produces.",
+    [
+        "Services that are properly coordinated \u2014 pipes, ducts, power and "
+        "data each keep their own space in the ceiling and their own line down "
+        "through the building, the way a real set of drawings resolves them.",
+        "Drawings, not just a picture \u2014 floor levels, roof heights, "
+        "dimensions and a title block, in the language a construction set "
+        "already uses.",
+        "Buildings that behave like buildings \u2014 upper floors step back "
+        "correctly, towers taper, and a spire is added when only its tip height "
+        "is known.",
+        "Measured facts kept apart from generated ones \u2014 when a building is "
+        "looked up by address, the real outline is labelled as measured, so "
+        "nobody mistakes it for a suggestion.",
+        "Changes by conversation \u2014 resize a room, take the roof off, change "
+        "a finish. The building updates; nothing is rebuilt from scratch.",
+        "The build, played back \u2014 site, slab, structure, walls, roof and "
+        "services appear in order, so you can watch how it goes together.",
+    ],
+    footer="All of it produced automatically, and all of it able to run in-house.",
+)
+
+d.divider("03", "The reason")
 
 d.cards(
-    "03 \u2014 The constraint",
-    "Three reasons the cloud planner cannot stay.",
+    "03 \u2014 The reason",
+    "Three reasons this cannot live in the cloud.",
     [
         (
-            "01 \u00b7 The drawings are privileged",
-            "Blueprints, structural sets, tender documents, and client site data "
-            "are contract-confidential. Many carry NDAs that prohibit "
-            "third-party processing outright.",
+            "The drawings are confidential",
+            "Blueprints, structural drawings and tender documents belong to "
+            "clients. Many agreements simply do not allow them to be handed to "
+            "another company for processing.",
         ),
         (
-            "02 \u00b7 The planner is in someone else's cloud",
-            "Acon's agent calls google/gemini-3.5-flash through Replicate. Every "
-            "turn ships project context off-network.",
+            "Today the thinking happens elsewhere",
+            "The part of Acon that interprets a project currently runs on an "
+            "outside service, so every request sends project information out of "
+            "the office.",
         ),
         (
-            "03 \u00b7 Manual modelling is the bottleneck",
-            "Turning a received sheet set into a workable 3D model is days of "
-            "drafter time \u2014 and it repeats on every revision.",
+            "Modelling by hand is the bottleneck",
+            "Turning a received drawing set into a usable 3D model takes days of "
+            "skilled time \u2014 and it starts again with every revision.",
         ),
     ],
 )
 
 d.bullets(
-    "03 \u2014 The constraint",
+    "03 \u2014 The reason",
     "The software has to live inside the firm.",
     [
-        "No drawing, sheet, or site coordinate leaves the office network. "
-        "Inference happens on a box in the building.",
-        "No third-party processor to disclose in a client agreement. Nothing to "
-        "add to a DPA, nothing to indemnify.",
-        "Prompts and outputs are nobody's training data. There is no retention "
-        "policy to take on trust.",
-        "It works when the network doesn't: site trailers, secure floors, "
-        "air-gapped review sessions.",
-        "Deployment stays internal \u2014 firm-issued machines talking to a "
-        "firm-owned appliance. No per-seat licence, no per-revision invoice.",
+        "Nothing leaves the office. The drawings stay exactly where they already "
+        "are.",
+        "Nothing to declare to a client, because no outside company ever handles "
+        "their documents.",
+        "No question of what happens to the files afterwards. They are never "
+        "sent anywhere, so there is no policy to take on trust.",
+        "It keeps working without an internet connection \u2014 on site, on "
+        "secure floors, anywhere.",
+        "No subscription per person and no charge per revision. The cost is the "
+        "machine, once.",
     ],
 )
 
@@ -431,294 +483,261 @@ d.divider("04", "The approach")
 
 d.two_col(
     "04 \u2014 The approach",
-    "Qwen-VL on Dell Pro Max with GB10.",
-    "Keep the entire product \u2014 chat, spec compiler, Three.js scene, GIS "
-    "path. Replace exactly one hop: the planner. Gemini on Replicate comes out, "
-    "and a local vision-language model on a desk-side Grace Blackwell appliance "
-    "goes in. Same JSON contract, same system prompt, same schema validation.",
+    "One machine in the office, doing all the thinking.",
+    "Everything already built stays exactly as it is. The only thing that "
+    "changes is where the intelligence runs. Instead of sending each request out "
+    "to an online service, Acon asks a model running on a Dell Pro Max with "
+    "GB10 \u2014 a compact machine that sits in the office and is built for "
+    "precisely this kind of work.",
     "The whole change",
     [
-        "Same contract.",
+        "Same software.",
         "Different machine.",
         "Nothing leaves the building.",
     ],
 )
 
 d.cards(
-    "04 \u2014 Hardware",
-    "Built for models this size.",
+    "04 \u2014 The machine",
+    "A supercomputer that fits on a desk.",
     [
         (
-            "01 \u00b7 Superchip",
-            "NVIDIA GB10 Grace Blackwell. 20-core Arm CPU, Blackwell GPU, "
-            "5th-generation Tensor Cores.",
+            "Purpose-built",
+            "Designed by Dell and NVIDIA for running AI models on your own "
+            "premises, rather than an ordinary workstation pressed into service.",
         ),
         (
-            "02 \u00b7 Memory",
-            "128 GB coherent LPDDR5x at 273 GB/s. CPU and GPU share one pool, "
-            "so weights and a large page of drawing tokens sit together.",
+            "Room for large models",
+            "128 GB of memory, shared between processor and graphics. That is "
+            "what lets a genuinely capable model sit on the machine at once.",
         ),
         (
-            "03 \u00b7 Compute",
-            "Up to 1 petaFLOP of FP4. NVFP4 is the format we target for planner "
-            "latency.",
+            "Serious speed",
+            "Up to a thousand trillion calculations a second, so a request comes "
+            "back while someone waits, not minutes later.",
         ),
         (
-            "04 \u00b7 Ceiling",
-            "~200B parameters for inference on one unit, ~70B for fine-tuning, "
-            "~400B across two units over ConnectX-7.",
+            "Room to grow",
+            "Handles models far larger than we need today. Two machines side by "
+            "side handle twice as much again.",
         ),
     ],
-    footer="NVIDIA DGX OS (Ubuntu-based) \u00b7 up to 4 TB NVMe \u00b7 same "
-    "platform as GB200/GB300, so the stack ports upward without a recode.",
+    footer="It sits under a desk, runs on ordinary office power, and the same "
+    "setup moves to larger hardware later if it is ever needed.",
 )
 
 d.cards(
     "05 \u2014 The models",
-    "Vision-language, because the input is a drawing.",
+    "The model has to be able to read a drawing.",
     [
         (
-            "Sheet reader",
-            "Qwen3-VL Instruct. Its document parsing returns text with layout "
-            "position, so a title block, a dimension string, and a room tag stay "
-            "spatially anchored. That is what turns a sheet into zones.",
+            "It reads the sheets",
+            "Qwen-VL is a model that sees as well as reads. It looks at a "
+            "drawing the way a person does \u2014 finding the dimensions, the "
+            "room names, the levels, and where each of them sits on the page.",
         ),
         (
-            "Planner",
-            "Qwen3-VL on the same endpoint, emitting Acon's construct / edit / "
-            "extract JSON. One model serves both jobs, so there is no separate "
-            "OCR stage to maintain.",
+            "It plans the building",
+            "The same model then decides what the building is, and hands those "
+            "decisions to the software to construct. One model covers both jobs, "
+            "so there is less to look after.",
         ),
         (
-            "Sizing",
-            "Start with a compact VL checkpoint in NVFP4 or FP8 to prove the "
-            "wire, then move up if zone coverage misses. MoE checkpoints (~3B "
-            "active) are the throughput pick; a dense 32B runs, but slower.",
+            "Sized to the machine",
+            "These models are openly available and free to run, in sizes made "
+            "for hardware like this. We start with a smaller one to prove it "
+            "works and move up only if accuracy asks for it.",
         ),
     ],
-    footer="vLLM \u2265 0.11 for Qwen3-VL \u00b7 NVFP4 wants the marlin GEMM "
-    "backend \u00b7 FLASHINFER attention on Blackwell \u00b7 out of the loop: "
-    "Gemini 3.5 Flash, Replicate",
+    footer="Everything runs on the machine in the office. The outside service in "
+    "use today is switched off.",
 )
 
 d.steps(
-    "05 \u2014 Pipeline",
-    "Five steps, none of them off the LAN.",
+    "05 \u2014 How it works",
+    "From documents to a building, in five steps.",
     [
-        (
-            "01",
-            "Ingest",
-            "Sheets, scans, or a photographed markup land in chat. Already "
-            "accepted today: image/*, PDF, DWG.",
-        ),
-        (
-            "02",
-            "See",
-            "Qwen-VL reads the sheet on the GB10: dimensions, grid lines, room "
-            "names, level markers.",
-        ),
-        (
-            "03",
-            "Specify",
-            "The model emits Acon's JSON only \u2014 footprint or width and "
-            "depth, massing bands, zones, storey heights, MEP flags.",
-        ),
-        (
-            "04",
-            "Compile",
-            "compileSpec turns the schema into walls, slabs, openings, and runs. "
-            "No model-authored geometry reaches the scene.",
-        ),
-        (
-            "05",
-            "Work",
-            "The 3D model is live: resize a room, strip the roof, change a "
-            "finish, all in natural language.",
-        ),
+        ("01", "Hand it over", "Drawings, a scan, or a photograph of a marked-up sheet."),
+        ("02", "Read", "The model on the office machine reads the sheet: sizes, levels, room names."),
+        ("03", "Decide", "It works out what the building is \u2014 outline, floors, rooms, heights."),
+        ("04", "Build", "The software constructs the model precisely from those decisions."),
+        ("05", "Use it", "Walk through it, measure it, and change it by asking."),
     ],
 )
 
 d.compare(
-    "04 \u2014 Architecture",
-    "One hop changes. The product does not.",
+    "04 \u2014 What changes",
+    "Only one thing changes.",
     (
         "Now",
         [
-            "Acon UI",
-            "\u2192 /api/agent",
-            "\u2192 Replicate",
-            "\u2192 google/gemini-3.5-flash",
-            "\u2192 JSON spec \u2192 compile \u2192 scene",
+            "A request leaves the office.",
+            "An outside service interprets the project.",
+            "The answer comes back over the internet.",
         ],
-        "Drawings leave the network.",
+        "The drawings leave the office.",
         MUTED,
     ),
     (
         "Target",
         [
-            "Acon UI",
-            "\u2192 /api/agent",
-            "\u2192 GB10 on the LAN",
-            "\u2192 Qwen-VL via vLLM or NIM",
-            "\u2192 JSON spec \u2192 compile \u2192 scene",
+            "The same request goes to the machine in the office.",
+            "The model on that machine interprets the project.",
+            "The answer never touches the internet.",
         ],
-        "Drawings stay on the LAN.",
+        "The drawings never leave.",
         ACCENT,
     ),
-    "GIS lookups still bypass the model. Locked workspaces still refuse a "
-    "rebuild. Schema validation is unchanged.",
+    "Everything else \u2014 the app, the editing, the address lookup \u2014 "
+    "works exactly as it does today.",
 )
 
-d.do_dont(
-    "04 \u2014 What we change",
-    "A provider swap, not a new product.",
-    [
-        "Promote the local OpenAI-compatible provider to first choice; base URL "
-        "becomes http://<gb10>:8000/v1.",
-        "Pin the served Qwen-VL model id as the default model.",
-        "Send attachments as image content parts. ChatAttachment carries only "
-        "name, type, and size today \u2014 the pixels never reach the model. "
-        "This is the one real code gap.",
-        "Health-check the GB10 the way probeOllama() already checks localhost.",
-        "Rewrite the system prompt, which currently announces \u201cusing Gemini "
-        "3.5 Flash on Replicate\u201d.",
-    ],
-    [
-        "Touch compileSpec, the Three.js scene, the GIS path, or the JSON schema.",
-        "Leave Gemini as a silent production fallback.",
-        "Fine-tune anything before inference quality is measured.",
-    ],
+d.columns(
+    "04 \u2014 What changes",
+    "What changes, and what doesn't.",
+    (
+        "What changes",
+        [
+            "The thinking moves to the machine in the office.",
+            "Uploaded drawings are shown to the model, so it can actually read "
+            "them.",
+            "The outside service is switched off.",
+        ],
+    ),
+    (
+        "What stays the same",
+        [
+            "The app, the 3D model, and the way editing works.",
+            "The way buildings are constructed from decisions.",
+            "Address lookups and their measured outlines.",
+        ],
+    ),
 )
 
 d.table(
-    "05 \u2014 Why local",
-    "Gemini off. GB10 on.",
-    ["", "Gemini 3.5 Flash (today)", "Qwen-VL on GB10 (target)"],
+    "05 \u2014 Side by side",
+    "Cloud today. Our own office instead.",
+    ["", "Outside service (today)", "Our own machine (target)"],
     [
-        ("Where inference runs", "Replicate cloud", "The firm's own appliance"),
+        ("Where the thinking happens", "Someone else's servers", "A machine in our office"),
         ("Drawings leave the firm", "Yes", "No"),
-        ("Credentials", "REPLICATE_API_TOKEN", "None for inference"),
-        ("Reads an issued sheet set", "Text-first", "Native vision with layout"),
-        ("Works offline", "No", "Yes"),
-        ("Cost per revision", "Metered per turn", "Fixed hardware"),
-        ("Contractual exposure", "Third-party processor", "None"),
-        ("Default in Acon", "Yes", "Becomes yes"),
+        ("Works without internet", "No", "Yes"),
+        ("Can read a drawing set", "Not properly", "Yes, it sees the page"),
+        ("Cost per revision", "Charged per request", "Nothing"),
+        ("Outside company involved", "Yes", "No"),
+        ("What clients must be told", "Their documents go elsewhere", "Nothing"),
     ],
 )
 
 d.stats(
-    "Capacity",
+    "In short",
     [
-        ("128 GB", "Unified coherent memory"),
-        ("1 PFLOP", "FP4 peak on Blackwell"),
-        ("200B", "Parameter ceiling, single unit"),
-        ("0", "Drawings leaving the network"),
+        ("128 GB", "Memory for large models"),
+        ("1", "Machine, in our office"),
+        ("0", "Drawings leaving the firm"),
+        ("0", "Cost per revision"),
     ],
-    "GB10 figures from Dell and NVIDIA published specifications.",
+    "Machine figures as published by Dell and NVIDIA.",
 )
 
 d.cards(
-    "06 \u2014 Risks",
-    "What this box is not.",
+    "06 \u2014 Being realistic",
+    "What to be realistic about.",
     [
         (
-            "01 \u00b7 Throughput, not capacity",
-            "128 GB will load large models; the token rate on a single GB10 is "
-            "desk-scale, not fleet-scale. Checkpoint choice and MoE architecture "
-            "matter more here than parameter count.",
+            "Fast, not infinite",
+            "One machine comfortably serves a team, not the whole firm at once. "
+            "If use grows, we add a second.",
         ),
         (
-            "02 \u00b7 It is a Linux appliance",
-            "DGX OS, container workflows, aarch64 builds. Not a Windows "
-            "workstation. Setup time is real and should be budgeted.",
+            "A specialist machine",
+            "It is set up for AI work rather than everyday office software, so "
+            "installing it properly takes a little time.",
         ),
         (
-            "03 \u00b7 Vision quality needs an eval set",
-            "Dimension strings and messy scans are exactly where VL models fail. "
-            "We need a fixed suite of sheets with hand-checked answers before "
-            "this replaces drafter time.",
+            "Reading drawings needs checking",
+            "Messy scans and handwritten dimensions are where these models make "
+            "mistakes. We test against drawings with known answers before anyone "
+            "relies on it.",
         ),
     ],
 )
 
 d.bullets(
-    "06 \u2014 Validation",
-    "What we measure before Gemini is switched off.",
+    "06 \u2014 How we'll know",
+    "How we'll know it works.",
     [
-        "Prompt suite \u2014 big-box retail, clinic, warehouse, office, tower, "
-        "L-shaped plate. Compare specs against current Gemini output on "
-        "identical prompts.",
-        "Sheet suite \u2014 real drawing sets with hand-checked footprints and "
-        "level heights. Score dimension accuracy and zone coverage.",
-        "Latency \u2014 median time-to-spec per turn, and time-to-first-token on "
-        "a long sheet.",
-        "Failure mode \u2014 how often the model returns non-schema output. "
-        "Target after validation is zero.",
+        "The same requests, side by side: what the office machine produces "
+        "against what the outside service produces today.",
+        "Real drawing sets with known dimensions, marked for accuracy by the "
+        "people who model them now.",
+        "How long a request takes, measured honestly rather than demonstrated.",
+        "How often it gets something wrong \u2014 and whether the mistake is "
+        "caught before anyone sees it.",
     ],
 )
 
 d.roadmap(
     "06 \u2014 The plan",
-    "Desk, then site.",
+    "Prove it, then rely on it.",
     [
         (
             "Now",
-            "Wire",
-            "GB10 on the LAN, vLLM serving Qwen-VL on port 8000, one construct "
-            "turn end to end with Gemini disabled.",
+            "Set up",
+            "The machine in the office, the model running on it, and one "
+            "complete building produced with the outside service switched off.",
         ),
         (
             "Next",
-            "Default",
-            "Local provider first. Attachments sent as real image parts. "
-            "Replicate demoted to optional.",
+            "Switch over",
+            "The office machine becomes the normal way Acon works. The outside "
+            "service becomes optional.",
         ),
         (
             "Then",
-            "Quality",
-            "A larger VL checkpoint if the eval set demands it. Sheet accuracy "
-            "targets signed off by the modelling team.",
+            "Sharpen",
+            "A larger model if the drawing tests call for it, with accuracy "
+            "signed off by the modelling team.",
         ),
         (
             "Later",
-            "Scale",
-            "A second GB10 for larger checkpoints, or the same stack pushed to a "
-            "firm server. No recode either way.",
+            "Grow",
+            "A second machine, or the same setup on a firm server, if demand "
+            "grows. Nothing needs rewriting.",
         ),
     ],
 )
 
 d.cards(
     "06 \u2014 The ask",
-    "We need the box on the network.",
+    "What we need.",
     [
         (
-            "01 Hardware",
-            "One Dell Pro Max with GB10, 2 TB or more NVMe, on the office "
-            "network at a static address.",
+            "The machine",
+            "One Dell Pro Max with GB10, connected to the office network.",
         ),
         (
-            "02 Access",
-            "DGX OS ready, NGC key for NIM, Hugging Face token for NVFP4 "
-            "checkpoints, Docker on the box.",
+            "Setup time",
+            "A couple of days to install it and get the model running properly.",
         ),
         (
-            "03 Data",
-            "Ten real drawing sets, hand-checked, cleared for internal use as "
-            "the evaluation corpus.",
+            "Drawings to test with",
+            "Around ten real sets, already checked by hand, cleared for internal "
+            "use.",
         ),
         (
-            "04 Decision",
-            "Approval to make local inference the default and retire the "
-            "Replicate key from production.",
+            "A decision",
+            "Approval to make the office machine the normal way this runs, and "
+            "retire the outside service.",
         ),
     ],
 )
 
 d.close(
-    "On-premises.",
-    "Acon \u00b7 Qwen-VL \u00b7 Dell Pro Max with GB10 \u2014 no cloud, no Gemini.",
+    "In-house.",
+    "Acon \u2014 automatic building generation on our own hardware. Nothing "
+    "leaves the office.",
 )
 
 d.save()
-print(f"wrote {OUT} ({len(d.prs.slides.__iter__.__self__._sldIdLst)} slides)")
+print(f"wrote {OUT} ({len(d.prs.slides._sldIdLst)} slides)")
