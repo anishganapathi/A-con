@@ -9,6 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
+    "desktop": "npm --prefix desktop-acon run dev",
+    "desktop:package": "npm --prefix desktop-acon run package",
     "login:cursor": "node scripts/cursorLogin.mjs",
     "logout:cursor": "node -e \"import('@cursor/sdk').then(m=>m.Cursor.auth.logout()).then(()=>console.log('Signed out of the Cursor model.'))\""
   },

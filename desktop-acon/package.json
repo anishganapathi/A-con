@@ -1,0 +1,31 @@
+{
+  "name": "desktop-acon",
+  "productName": "A-con",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A-con as a desktop application, built from the web app's own source.",
+  "author": "A-con",
+  "main": "dist/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "build:main": "vite build --config vite.main.config.ts",
+    "start": "npm run build && electron .",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "package": "npm run build && electron-builder --publish never",
+    "package:dir": "npm run build && electron-builder --dir --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@vitejs/plugin-react": "^6.1.0",
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2"
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.28"
+  }
+}

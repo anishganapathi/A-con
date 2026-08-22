@@ -1,15 +1,5 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { loadEnv, type Plugin, type ViteDevServer } from "vite";
-import {
-  completeJson,
-  envFlags,
-  pickOllamaModel,
-  probeCursorLogin,
-  probeOllama,
-  resolveConfig,
-  type ServerProvider,
-} from "./modelProviders.ts";
-import { lookupNycBuilding } from "./nycGis.ts";
+import { handleAgent, handleGis, handleStatus } from "./agentApi.ts";
 
 export function agentPlugin(): Plugin {
   return {
@@ -17,14 +7,14 @@ export function agentPlugin(): Plugin {
     configureServer(server) {
       server.middlewares.use("/api/agent", (req, res, next) => {
         if (req.method === "GET") {
-          void handleStatus(server, res);
+          void handleStatus(envFrom(server), res);
           return;
         }
         if (req.method !== "POST") {
           next();
           return;
         }
-        void handleAgent(server, req, res);
+        void handleAgent(envFrom(server), req, res);
       });
       server.middlewares.use("/api/gis", (req, res, next) => {
         if (req.method !== "POST") {
@@ -37,30 +27,6 @@ export function agentPlugin(): Plugin {
   };
 }
 
-async function handleGis(req: IncomingMessage, res: ServerResponse) {
-  try {
-    const body = (await readJson(req)) as { query?: string };
-    const query = body.query?.trim();
-    if (!query) {
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "Missing query" }));
-      return;
-    }
-    const building = await lookupNycBuilding(query);
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(building));
-  } catch (error) {
-    res.statusCode = 502;
-    res.setHeader("Content-Type", "application/json");
-    res.end(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "NYC GIS lookup failed",
-      }),
-    );
-  }
-}
-
 function envFrom(server: ViteDevServer): Record<string, string> {
   return {
     ...loadEnv(server.config.mode, server.config.envDir, ""),
@@ -70,112 +36,4 @@ function envFrom(server: ViteDevServer): Record<string, string> {
       ),
     ),
   };
-}
-
-async function handleStatus(server: ViteDevServer, res: ServerResponse) {
-  const env = envFrom(server);
-  const [ollama, cursorLogin] = await Promise.all([probeOllama(), probeCursorLogin()]);
-  const flags = envFlags(env, { cursorLogin });
-  flags.ollama = ollama.up;
-  res.setHeader("Content-Type", "application/json");
-  res.end(
-    JSON.stringify({
-      env: flags,
-      ollama,
-      cursorLogin,
-      defaultProvider:
-        env.ECON_AGENT_PROVIDER ??
-        (flags.replicate
-          ? "replicate"
-          : flags.gemini
-            ? "gemini"
-            : flags.cursor
-              ? "cursor"
-              : ollama.up
-                ? "ollama"
-                : "cursor"),
-    }),
-  );
-}
-
-async function handleAgent(
-  server: ViteDevServer,
-  req: IncomingMessage,
-  res: ServerResponse,
-) {
-  const env = envFrom(server);
-  try {
-    const body = (await readJson(req)) as {
-      text?: string;
-      role?: string;
-      plan?: string;
-      attachments?: unknown[];
-      provider?: ServerProvider;
-      apiKey?: string;
-      model?: string;
-    };
-    const [ollama, cursorLogin] = await Promise.all([probeOllama(), probeCursorLogin()]);
-    let config = resolveConfig(
-      env,
-      {
-        provider: body.provider,
-        apiKey: body.apiKey,
-        model: body.model,
-      },
-      { cursorLogin },
-    );
-    if (!config && ollama.up) {
-      config = { provider: "ollama", apiKey: "", model: "" };
-    }
-    if (config?.provider === "ollama") {
-      // Ollama 404s on a model that was never pulled, so the name is always
-      // reconciled against the install list rather than trusted.
-      config.model = pickOllamaModel(body.model, env.ECON_AGENT_MODEL, ollama.models);
-    }
-    if (!config) {
-      res.statusCode = 204;
-      res.end();
-      return;
-    }
-
-    const result = await completeJson(config, {
-      text: body.text,
-      role: body.role,
-      plan: body.plan,
-      attachments: body.attachments ?? [],
-    });
-    res.setHeader("Content-Type", "application/json");
-    res.end(
-      JSON.stringify({
-        ...result.parsed,
-        model: result.model,
-        provider: result.provider,
-      }),
-    );
-  } catch (error) {
-    res.statusCode = 503;
-    res.setHeader("Content-Type", "application/json");
-    res.end(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Agent API failed",
-      }),
-    );
-  }
-}
-
-function readJson(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-    req.on("end", () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
-      } catch (error) {
-        reject(error);
-      }
-    });
-    req.on("error", reject);
-  });
 }
