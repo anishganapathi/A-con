@@ -8,13 +8,13 @@ function status(
   return {
     env: {
       replicate: false,
-      cursor: false,
       gemini: false,
       groq: false,
       openai: false,
       openrouter: false,
       gateway: false,
       ollama: false,
+      local: false,
       ...env,
     },
     ollama: { up: options.ollamaUp ?? false, models: [] },
@@ -29,10 +29,28 @@ describe("preferredProvider", () => {
     );
   });
 
-  test("picks a signed-in cursor over an unusable default", () => {
-    expect(preferredProvider(status({ cursor: true }, { defaultProvider: "replicate" }))).toBe(
-      "cursor",
+  test("picks the local VL box over an unusable default", () => {
+    expect(preferredProvider(status({ local: true }, { defaultProvider: "replicate" }))).toBe(
+      "local",
     );
+  });
+
+  test("runs on the local VL box ahead of a hosted key", () => {
+    // Nothing is pinned and the stated default cannot be served, so the order
+    // decides — and the VL box is what this app plans with.
+    expect(
+      preferredProvider(
+        status({ local: true, replicate: true, gemini: true }, { defaultProvider: "ollama" }),
+      ),
+    ).toBe("local");
+  });
+
+  test("still honours a provider the server pinned", () => {
+    expect(
+      preferredProvider(
+        status({ local: true, groq: true }, { defaultProvider: "groq" }),
+      ),
+    ).toBe("groq");
   });
 
   test("falls back to ollama when it is the only thing up", () => {

@@ -28,6 +28,10 @@ function extent(ring: { x: number; y: number }[]) {
 }
 
 describe("buildSpecQuestions", () => {
+  test("does not ask when the plate was read from a drawing", () => {
+    expect(buildSpecQuestions(draft({ measured: true }))).toEqual([]);
+  });
+
   test("asks for footprint, height, then windows in that order", () => {
     expect(buildSpecQuestions(draft()).map((question) => question.id)).toEqual([
       "footprint",

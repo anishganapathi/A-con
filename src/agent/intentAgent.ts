@@ -12,6 +12,7 @@ export type UserIntent =
   | { role: "edit"; kind: "hide_roof" }
   | { role: "edit"; kind: "show_roof" }
   | { role: "edit"; kind: "keep_roof" }
+  | { role: "edit"; kind: "read_drawing" }
   | { role: "edit"; kind: "freeform"; text: string }
   | { role: "construct"; kind: "construct" }
   | { role: "extract"; kind: "extract" }
@@ -56,6 +57,9 @@ export function interpretIntent(
   attachments?: ChatAttachment[],
 ): UserIntent {
   const utterance = text.toLowerCase();
+  if (hasDrawing(attachments)) {
+    return { role: "edit", kind: "read_drawing" };
+  }
   if (attachments && attachments.length > 0) {
     return { role: "extract", kind: "extract" };
   }
@@ -172,6 +176,14 @@ function mentionArea(utterance: string): number | null {
   }
   const numbers = [...utterance.matchAll(/(\d+(?:\.\d+)?)/g)].map((match) => Number(match[1]));
   return numbers.at(-1) ?? null;
+}
+
+function hasDrawing(attachments?: ChatAttachment[]): boolean {
+  return Boolean(
+    attachments?.some(
+      (file) => file.dataUrl?.startsWith("data:image/") || file.type.startsWith("image/"),
+    ),
+  );
 }
 
 function hasAny(utterance: string, phrases: string[]): boolean {

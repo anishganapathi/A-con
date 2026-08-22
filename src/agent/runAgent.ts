@@ -5,12 +5,6 @@ import { compileSpec } from "./compileSpec";
 import { planEdits } from "./editAgent";
 import { narrateEdit } from "./followUp";
 import { actionsFromIntent, interpretIntent } from "./intentAgent";
-import {
-  describeGis,
-  fetchNycBuilding,
-  looksLikeNycLookup,
-  specFromGis,
-} from "./gisBuilding";
 import { planLlmActions } from "./llmPlanner";
 import type { ModelSettings } from "./modelSettings";
 import { summarizePlan } from "./summarize";
@@ -25,25 +19,14 @@ export async function runConstructionAgent(input: {
   /** When set, the model on screen may be edited but never rebuilt. */
   locked?: boolean;
 }): Promise<AgentTurn> {
-  const role = resolveAgentRole(
-    input.text,
-    input.attachments,
-    input.locked,
-    input.plan,
-  );
   const guard = (turn: AgentTurn) => (input.locked ? lockWorkspaceTurn(turn) : turn);
-
-  // A named NYC building is a survey, not a guess — resolve it from GIS and
-  // skip the model entirely so the envelope stays measured.
-  if (role === "construct" && looksLikeNycLookup(input.text)) {
-    return guard(await runGisBuild(input.text));
-  }
 
   try {
     const llm = await planLlmActions({
       text: input.text,
       plan: input.plan,
-      role,
+      role: "router",
+      locked: input.locked,
       attachments: input.attachments,
       settings: input.settings,
     });
@@ -55,6 +38,12 @@ export async function runConstructionAgent(input: {
       throw error;
     }
   }
+  const role = resolveAgentRole(
+    input.text,
+    input.attachments,
+    input.locked,
+    input.plan,
+  );
   return guard(runLocal(role, input.text, input.plan, input.attachments ?? []));
 }
 
@@ -94,34 +83,6 @@ export function lockWorkspaceTurn(turn: AgentTurn): AgentTurn {
     actions,
     reply: `${turn.reply}\n\nThe workspace is locked, so I kept the model that is on screen and applied only the live edits. Unlock it to build something new.`,
   };
-}
-
-async function runGisBuild(text: string): Promise<AgentTurn> {
-  try {
-    const building = await fetchNycBuilding(text);
-    const spec = specFromGis(building);
-    const next = compileSpec(spec);
-    return {
-      agent: "construct",
-      planner: "gis",
-      model: "nyc-open-data",
-      reply: describeGis(building),
-      actions: [
-        {
-          type: "replace_plan",
-          plan: next,
-          note: `Surveyed ${building.name} · BBL ${building.bbl}`,
-        },
-      ],
-    };
-  } catch (error) {
-    return {
-      agent: "explain",
-      planner: "gis",
-      reply: `NYC GIS lookup failed: ${error instanceof Error ? error.message : "unknown error"}\n\nTry a full street address with the borough, for example “350 5th Ave, Manhattan”, or a 10-digit BBL.`,
-      actions: [],
-    };
-  }
 }
 
 function runLocal(

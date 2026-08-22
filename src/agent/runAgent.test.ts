@@ -102,6 +102,20 @@ describe("lock mode", () => {
     expect(turn.actions).toEqual([]);
   });
 
+  test("an elevation image stays in edit and does not rebuild", async () => {
+    const turn = await runConstructionAgent({
+      text: "match this elevation",
+      plan: mockFloorPlan,
+      locked: true,
+      attachments: [
+        { name: "elev.png", type: "image/png", size: 12, dataUrl: "data:image/png;base64,aaa" },
+      ],
+    });
+
+    expect(turn.agent).toBe("edit");
+    expect(turn.actions.some((action) => action.type === "replace_plan")).toBe(false);
+  });
+
   test("removing the roof hides it", async () => {
     const turn = await runConstructionAgent({
       text: "removing the roof",

@@ -6,16 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "start": "node server/serve.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
     "desktop": "npm --prefix desktop-acon run dev",
-    "desktop:package": "npm --prefix desktop-acon run package",
-    "login:cursor": "node scripts/cursorLogin.mjs",
-    "logout:cursor": "node -e \"import('@cursor/sdk').then(m=>m.Cursor.auth.logout()).then(()=>console.log('Signed out of the Cursor model.'))\""
+    "desktop:package": "npm --prefix desktop-acon run package"
   },
   "dependencies": {
-    "@cursor/sdk": "^1.0.28",
     "@pmndrs/assets": "^1.7.0",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",

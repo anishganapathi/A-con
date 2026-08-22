@@ -13,6 +13,7 @@ import {
   plateScales,
   scalePolygon,
 } from "./buildingSpec";
+import { layoutMeasuredFloor } from "./measuredFloor";
 import type { MepPlan } from "./mepLayout";
 import { planElectrical, planPipes, riserAnchorFor } from "./mepLayout";
 
@@ -55,10 +56,14 @@ export function compileSpec(raw: Partial<BuildingSpec>): FloorPlan {
   for (let index = 0; index < totalLevels; index += 1) {
     const id = index === 0 ? "l1" : `l${index + 1}`;
     const prefix = index === 0 ? "" : `${id}-`;
-    const label = index === 0 ? "" : `L${index + 1} `;
-    const floorSpec = surveyedMassing
-      ? atMassing(spec, surveyedMassing, elevation)
-      : atScale(spec, scales[index] ?? 1);
+    const label = spec.levels?.[index] ? "" : index === 0 ? "" : `L${index + 1} `;
+    const floorSpec = programForFloor(
+      surveyedMassing
+        ? atMassing(spec, surveyedMassing, elevation)
+        : atScale(spec, scales[index] ?? 1),
+      spec,
+      index,
+    );
     if (!floorSpec) {
       elevation += spec.storyHeight;
       continue;
@@ -66,7 +71,9 @@ export function compileSpec(raw: Partial<BuildingSpec>): FloorPlan {
     floors.push(
       compileFloor(floorSpec, {
         id,
-        name: index < occupiable ? floorName(index) : spireName(index, occupiable),
+        name:
+          spec.levels?.[index]?.name ??
+          (index < occupiable ? floorName(index) : spireName(index, occupiable)),
         elevation,
         prefix,
         label,
@@ -126,6 +133,21 @@ export function compileSpec(raw: Partial<BuildingSpec>): FloorPlan {
  * Swaps in the surveyed setback volume that spans this elevation. Returns null
  * above the structural top, where there is nothing left to draw.
  */
+function programForFloor(
+  floorSpec: BuildingSpec | null,
+  spec: BuildingSpec,
+  index: number,
+): BuildingSpec | null {
+  if (!floorSpec) {
+    return null;
+  }
+  const level = spec.levels?.[index];
+  if (!level) {
+    return floorSpec;
+  }
+  return { ...floorSpec, zones: level.zones };
+}
+
 function atMassing(
   spec: BuildingSpec,
   massing: MassingVolume[],
@@ -298,15 +320,26 @@ interface FloorMeta {
 }
 
 function compileFloor(spec: BuildingSpec, meta: FloorMeta): Floor {
-  const walls = wallsFromSpec(spec, meta.prefix, meta.dense);
+  // A plate traced off a sheet carries real rooms, so its partitions and
+  // openings follow the tiling rather than the synthesized zone grid.
+  const traced =
+    spec.measured && !spec.footprint
+      ? layoutMeasuredFloor(spec, meta.prefix, exteriorMaterial(spec))
+      : null;
+  const zones = traced ? traced.zones : spec.zones;
+  const walls = traced ? traced.walls : wallsFromSpec(spec, meta.prefix, meta.dense);
   // Crown and mast levels carry structure but no occupancy, so no rooms or MEP.
   const rooms = meta.occupiable
-    ? spec.zones.map((zone) => roomFromZone(zone, meta.prefix, meta.label))
+    ? zones.map((zone) => roomFromZone(zone, meta.prefix, meta.label))
     : [];
   // Tall plates only glaze the base; a full curtain wall on every storey
   // triples the wall geometry without reading differently at building scale.
-  const openings =
-    meta.dense || meta.index === 0 ? openingsFromSpec(spec, walls, meta.prefix) : [];
+  const openings = traced
+    ? traced.openings
+    : meta.dense || meta.index === 0
+      ? openingsFromSpec(spec, walls, meta.prefix)
+      : [];
+  const mepSpec = traced ? { ...spec, zones } : spec;
   return {
     id: meta.id,
     name: meta.name,
@@ -334,11 +367,11 @@ function compileFloor(spec: BuildingSpec, meta: FloorMeta): Floor {
         : [],
     pipes:
       spec.includeMep && meta.occupiable
-        ? planPipes(spec, meta.prefix, meta.dense, meta.riser)
+        ? planPipes(mepSpec, meta.prefix, meta.dense, meta.riser)
         : [],
     electrical:
       spec.includeMep && meta.occupiable
-        ? planElectrical(spec, meta.prefix, meta.dense, meta.riser)
+        ? planElectrical(mepSpec, meta.prefix, meta.dense, meta.riser)
         : [],
   };
 }
@@ -519,6 +552,19 @@ function openingsFromSpec(
         });
       }
       continue;
+    }
+    // The entrance goes on the front wall at grade; without it the plate is
+    // sealed and every interior door leads nowhere.
+    if (isFront && prefix === "") {
+      openings.push({
+        id: `${prefix}door-entry`,
+        wallId: item.id,
+        type: "door",
+        offsetFromStart: Math.max(0.4, length / 2 - 0.55),
+        width: Math.min(1.1, length - 0.8),
+        height: Math.min(2.3, spec.storyHeight - 0.4),
+        sillHeight: 0,
+      });
     }
     const glazing = spec.windows;
     if (length > 8) {

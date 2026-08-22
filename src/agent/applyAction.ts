@@ -21,7 +21,7 @@ export function applyAgentAction(plan: FloorPlan, action: AgentAction): FloorPla
     case "replace_plan":
       return action.plan;
     case "patch_roof":
-      return { ...plan, roof: { ...plan.roof, ...action.patch } };
+      return { ...plan, roof: { ...plan.roof, ...(action.patch ?? {}) } };
     case "resize_room":
       return resizeRoomInPlan(plan, action.roomId, action.areaSqM, {
         stack: action.stack,
@@ -85,7 +85,11 @@ export function describeAction(action: AgentAction): string {
     case "replace_plan":
       return action.note;
     case "patch_roof":
-      return action.patch.visible === false ? "Removed the roof" : "Updated the roof";
+      return action.patch?.visible === false
+        ? "Removed the roof"
+        : action.patch?.ridgeHeight !== undefined || action.patch?.eaveHeight !== undefined
+          ? "Steepened the roof"
+          : "Updated the roof";
     case "resize_room":
       return action.stack === false
         ? `Resized room ${action.roomId} to ${action.areaSqM} m² on that floor only`
@@ -95,7 +99,7 @@ export function describeAction(action: AgentAction): string {
     case "patch_room":
       return `Updated room ${action.roomId}`;
     case "patch_opening":
-      return `Updated opening ${action.openingId}`;
+      return `Updated opening ${action.openingId}${describeOpeningPatch(action.patch)}`;
     case "patch_pipe":
       return `Updated pipe ${action.pipeId}`;
     case "patch_electrical":
@@ -111,10 +115,24 @@ export function describeAction(action: AgentAction): string {
     case "add_electrical":
       return `Added ${action.run.name}`;
     case "remove":
-      return `Removed ${action.selection.kind} ${action.selection.id}`;
+      return `Removed ${action.label ?? `${action.selection.kind} ${action.selection.id}`}`;
     case "set_material":
       return `Set material on ${action.match}`;
     default:
       return "Updated plan";
   }
+}
+
+const OPENING_LABELS: Record<string, string> = {
+  offsetFromStart: "along the wall",
+  width: "wide",
+  height: "tall",
+  sillHeight: "sill",
+};
+
+function describeOpeningPatch(patch: Record<string, unknown> | undefined): string {
+  const parts = Object.entries(patch ?? {})
+    .filter(([key, value]) => key in OPENING_LABELS && typeof value === "number")
+    .map(([key, value]) => `${value} m ${OPENING_LABELS[key]}`);
+  return parts.length > 0 ? ` — ${parts.join(", ")}` : "";
 }

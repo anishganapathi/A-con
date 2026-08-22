@@ -27,7 +27,8 @@ export type AgentAction =
   | { type: "add_opening"; floorId: string; opening: Opening }
   | { type: "add_pipe"; floorId: string; pipe: PipeRun }
   | { type: "add_electrical"; floorId: string; run: ElectricalRun }
-  | { type: "remove"; selection: Selection }
+  /** `label` is what the chat says was removed, when the id is unreadable. */
+  | { type: "remove"; selection: Selection; label?: string }
   | {
       type: "set_material";
       kind: "wall" | "room" | "pipe" | "electrical";
@@ -39,6 +40,8 @@ export interface ChatAttachment {
   name: string;
   type: string;
   size: number;
+  /** data:image/...;base64,... so the local VL can see the drawing. */
+  dataUrl?: string;
 }
 
 export interface ChatMessage {

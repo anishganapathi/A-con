@@ -68,6 +68,17 @@ export interface BuildingSpec {
   /** Chosen glazing size; overrides the per-typology defaults when set. */
   windows?: GlazingSpec;
   survey?: SurveySource;
+  /** Read off a sheet — skip the size chips and keep these metres. */
+  measured?: boolean;
+  /** How the sheet labelled the plate. Converted to metres on normalize. */
+  units?: "m" | "ft" | "feet" | "meters";
+  /** One program per storey, traced from a plan sheet. */
+  levels?: FloorProgram[];
+}
+
+export interface FloorProgram {
+  name: string;
+  zones: ZoneSpec[];
 }
 
 export interface GlazingSpec {
@@ -117,23 +128,34 @@ export function normalizeSpec(raw: Partial<BuildingSpec> | undefined): BuildingS
 
   // Synthesized buildings stay in a sane envelope; surveyed ones use real values.
   const bbox = footprint ? footprintBounds(footprint) : null;
-  const width = bbox
-    ? bbox.width
-    : clamp(raw?.width ?? defaultSize(typology).width, 8, 120);
-  const depth = bbox
-    ? bbox.depth
-    : clamp(raw?.depth ?? defaultSize(typology).depth, 8, 90);
+  const plate = plateInMeters(raw, typology);
+  const minSpan = raw?.measured || plate.fromFeet ? 6 : 8;
+  const width = bbox ? bbox.width : clamp(plate.width, minSpan, 120);
+  const depth = bbox ? bbox.depth : clamp(plate.depth, minSpan, 90);
+  const levels = normalizeLevels(raw, width, depth);
   const storyCap = surveyed ? MAX_STORIES : 12;
+  const copiedLiveStoreys =
+    Boolean(raw?.measured) &&
+    !levels &&
+    Math.round(raw?.stories ?? 0) >= 3 &&
+    !/3\s*stor|three stor|third floor/i.test(`${raw?.notes ?? ""}`);
   const stories = Math.min(
     storyCap,
-    Math.max(1, Math.round(raw?.stories ?? 1)),
+    Math.max(
+      1,
+      levels?.length ??
+        (copiedLiveStoreys ? 2 : Math.round(raw?.stories ?? 1)),
+    ),
   );
+  const copiedLiveHeight = Boolean(raw?.measured) && (raw?.storyHeight ?? 0) >= 3.5;
   const storyHeight = clamp(
-    raw?.storyHeight ?? defaultSize(typology).storyHeight,
+    copiedLiveHeight
+      ? 3
+      : (raw?.storyHeight ?? (raw?.measured ? 3 : defaultSize(typology).storyHeight)),
     2.4,
     14,
   );
-  const zones = (raw?.zones ?? [])
+  const zones = asList<Partial<ZoneSpec>>(raw?.zones)
     .map((zone, index) => normalizeZone(zone, index, width, depth))
     .filter((zone) => zone.w >= 1.5 && zone.h >= 1.5);
 
@@ -149,7 +171,7 @@ export function normalizeSpec(raw: Partial<BuildingSpec> | undefined): BuildingS
     depth,
     stories,
     storyHeight,
-    roof: raw?.roof ?? (typology === "residential" && !surveyed ? "standing-seam" : "flat"),
+    roof: coerceRoof(raw?.roof, typology, surveyed),
     exteriorColor: raw?.exteriorColor,
     includeMep: raw?.includeMep ?? true,
     notes: raw?.notes,
@@ -161,6 +183,8 @@ export function normalizeSpec(raw: Partial<BuildingSpec> | undefined): BuildingS
     tipHeight: normalizeTipHeight(raw?.tipHeight),
     windows: raw?.windows,
     survey: raw?.survey,
+    measured: Boolean(raw?.measured || raw?.survey),
+    levels,
   };
 }
 
@@ -259,11 +283,15 @@ interface FittedOutline {
  * sometimes closed like GeoJSON. Downstream code assumes a counter-clockwise
  * ring whose bounding box starts at the origin, so fit it or reject it.
  */
-function fitOutline(raw: Point2D[] | undefined): FittedOutline | undefined {
-  if (!raw || raw.length < 3) {
+function fitOutline(raw: unknown): FittedOutline | undefined {
+  if (isProgramList(raw)) {
     return undefined;
   }
-  let ring = raw
+  const points = asPointRing(raw);
+  if (!points || points.length < 3) {
+    return undefined;
+  }
+  let ring = points
     .filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))
     .map((point) => ({ x: point.x, y: point.y }));
   ring = dropRepeatedPoints(ring);
@@ -297,14 +325,15 @@ function fitOutline(raw: Point2D[] | undefined): FittedOutline | undefined {
  * left to punch a hole in the stack.
  */
 function normalizeMassing(
-  raw: MassingVolume[] | undefined,
+  raw: unknown,
   outline: FittedOutline | undefined,
 ): MassingVolume[] | undefined {
-  if (!raw || raw.length === 0) {
+  const volumes = asList<MassingVolume>(raw);
+  if (volumes.length === 0) {
     return undefined;
   }
   const bands: MassingVolume[] = [];
-  for (const volume of raw) {
+  for (const volume of volumes) {
     const minHeight = Number(volume?.minHeight ?? 0);
     const maxHeight = Number(volume?.maxHeight ?? 0);
     if (!Number.isFinite(minHeight) || !Number.isFinite(maxHeight)) {
@@ -314,7 +343,7 @@ function normalizeMassing(
       continue;
     }
     const polygon = dropRepeatedPoints(
-      (volume?.polygon ?? []).filter(
+      (asPointRing(volume?.polygon) ?? []).filter(
         (point) => Number.isFinite(point?.x) && Number.isFinite(point?.y),
       ),
     );
@@ -376,6 +405,50 @@ function thinRing(points: Point2D[], max: number): Point2D[] {
   }
   const step = points.length / max;
   return Array.from({ length: max }, (_, index) => points[Math.floor(index * step)]);
+}
+
+function asList<T>(value: unknown): T[] {
+  if (Array.isArray(value)) {
+    return value as T[];
+  }
+  if (value && typeof value === "object") {
+    const values = Object.values(value as Record<string, T>);
+    return values.every((entry) => entry && typeof entry === "object") ? values : [];
+  }
+  return [];
+}
+
+function asPointRing(raw: unknown): Point2D[] | undefined {
+  if (Array.isArray(raw)) {
+    return raw.map(asPoint).filter((point): point is Point2D => Boolean(point));
+  }
+  if (!raw || typeof raw !== "object") {
+    return undefined;
+  }
+  const record = raw as Record<string, unknown>;
+  for (const key of ["ring", "points", "coordinates"] as const) {
+    const nested = record[key];
+    if (Array.isArray(nested)) {
+      const first = nested[0];
+      return asPointRing(Array.isArray(first) && typeof first[0] !== "number" ? first : nested);
+    }
+  }
+  return undefined;
+}
+
+function asPoint(value: unknown): Point2D | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  if (Array.isArray(value) && value.length >= 2) {
+    const x = Number(value[0]);
+    const y = Number(value[1]);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  }
+  const record = value as { x?: unknown; y?: unknown };
+  const x = Number(record.x);
+  const y = Number(record.y);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
 function signedArea(points: Point2D[]): number {
@@ -656,6 +729,141 @@ function detectReference(text: string): string | null {
   return null;
 }
 
+function normalizeLevels(
+  raw: Partial<BuildingSpec> | undefined,
+  width: number,
+  depth: number,
+): FloorProgram[] | undefined {
+  const listed = asList<Partial<FloorProgram> & { rooms?: unknown }>(
+    raw?.levels ??
+      (raw as { floors?: unknown })?.floors ??
+      (isProgramList(raw?.footprint) ? raw?.footprint : undefined),
+  );
+  const levels = listed
+    .map((level, index) => {
+      // Sheets draw 4'-deep toilets and wash areas; only joinery is thinner.
+      const rooms = asList<Partial<ZoneSpec>>(level.zones ?? level.rooms)
+        .map((zone, zoneIndex) => normalizeZone(zone, zoneIndex, width, depth))
+        .filter((zone) => zone.w >= 1 && zone.h >= 1);
+      if (rooms.length === 0) {
+        return null;
+      }
+      return {
+        name: String(level.name ?? "").trim() || `Level ${index + 1}`,
+        zones: fitZonesToPlate(rooms, width, depth),
+      };
+    })
+    .filter((level): level is FloorProgram => Boolean(level));
+  const kept = dropInventedLevels(levels, Math.round(Number(raw?.stories) || 0));
+  return kept.length > 0 ? kept : undefined;
+}
+
+function isProgramList(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.some(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        (Array.isArray((entry as { zones?: unknown }).zones) ||
+          Array.isArray((entry as { rooms?: unknown }).rooms)),
+    )
+  );
+}
+
+/**
+ * A sheet shows the floors it draws. Anything past them — stock repeats of an
+ * earlier plate, or levels the model numbered itself — is padding, and a
+ * declared storey count smaller than the program list wins over the list.
+ */
+function dropInventedLevels(levels: FloorProgram[], declared: number): FloorProgram[] {
+  const kept: FloorProgram[] = [];
+  for (const [index, level] of levels.entries()) {
+    if (index >= 2 && (inventedLevel(level) || repeatsEarlier(level, kept))) {
+      break;
+    }
+    kept.push(level);
+  }
+  return declared >= 1 && declared < kept.length ? kept.slice(0, declared) : kept;
+}
+
+function repeatsEarlier(level: FloorProgram, kept: FloorProgram[]): boolean {
+  const signature = planSignature(level);
+  return kept.some((earlier) => planSignature(earlier) === signature);
+}
+
+function planSignature(level: FloorProgram): string {
+  return level.zones
+    .map((zone) => `${zone.x},${zone.y},${zone.w},${zone.h}`)
+    .sort()
+    .join("|");
+}
+
+function inventedLevel(level: FloorProgram): boolean {
+  if (/^(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\b/i.test(level.name)) {
+    return true;
+  }
+  return level.zones.some((zone) => /^l\d+\s+/i.test(zone.name));
+}
+
+function coerceRoof(
+  raw: BuildingSpec["roof"] | { type?: string } | undefined,
+  typology: BuildingTypology,
+  surveyed: boolean,
+): BuildingSpec["roof"] {
+  if (raw === "flat" || raw === "standing-seam") {
+    return raw;
+  }
+  if (raw && typeof raw === "object" && (raw.type === "flat" || raw.type === "standing-seam")) {
+    return raw.type;
+  }
+  return typology === "residential" && !surveyed ? "standing-seam" : "flat";
+}
+
+function fitZonesToPlate(zones: ZoneSpec[], width: number, depth: number): ZoneSpec[] {
+  const maxX = Math.max(...zones.map((zone) => zone.x + zone.w), 0);
+  const maxY = Math.max(...zones.map((zone) => zone.y + zone.h), 0);
+  if (maxX <= width * 1.15 && maxY <= depth * 1.15) {
+    return zones;
+  }
+  const scaleX = width / Math.max(maxX, 0.1);
+  const scaleY = depth / Math.max(maxY, 0.1);
+  return zones.map((zone) => ({
+    ...zone,
+    x: snap(zone.x * scaleX),
+    y: snap(zone.y * scaleY),
+    w: snap(Math.max(1, zone.w * scaleX)),
+    h: snap(Math.max(1, zone.h * scaleY)),
+  }));
+}
+
+function plateInMeters(
+  raw: Partial<BuildingSpec> | undefined,
+  typology: BuildingTypology,
+): { width: number; depth: number; fromFeet: boolean } {
+  const fallback = defaultSize(typology);
+  const width = Number(raw?.width);
+  const depth = Number(raw?.depth);
+  const hasPlate = Number.isFinite(width) && width > 0 && Number.isFinite(depth) && depth > 0;
+  if (!hasPlate) {
+    return { width: fallback.width, depth: fallback.depth, fromFeet: false };
+  }
+  const notes = `${raw?.notes ?? ""} ${raw?.name ?? ""} ${raw?.units ?? ""}`;
+  const labelledFeet = /\b(ft|feet|imperial)\b|['′]/.test(notes.toLowerCase());
+  const bungalowFeet =
+    Boolean(raw?.measured) &&
+    typology === "residential" &&
+    width >= 16 &&
+    width <= 80 &&
+    depth >= 16 &&
+    depth <= 80 &&
+    width * depth >= 400;
+  if (labelledFeet || bungalowFeet) {
+    return { width: width * 0.3048, depth: depth * 0.3048, fromFeet: true };
+  }
+  return { width, depth, fromFeet: false };
+}
+
 function defaultSize(typology: BuildingTypology) {
   if (typology === "retail") {
     return { width: 72, depth: 48, stories: 1, storyHeight: 7.2 };
@@ -792,17 +1000,49 @@ function normalizeZone(
   width: number,
   depth: number,
 ): ZoneSpec {
-  const x = clamp(zone.x ?? 0, 0, width - 1.5);
-  const y = clamp(zone.y ?? 0, 0, depth - 1.5);
+  // Size first, then position: a room the model placed past the far wall should
+  // slide back against it at full size, not get squashed against the clamp.
+  const w = clamp(zone.w ?? 4, 1, width);
+  const h = clamp(zone.h ?? 4, 1, depth);
   return {
     id: zone.id?.trim() || `zone-${index + 1}`,
     name: zone.name?.trim() || `Zone ${index + 1}`,
-    x: snap(x),
-    y: snap(y),
-    w: snap(clamp(zone.w ?? 4, 1.5, width - x)),
-    h: snap(clamp(zone.h ?? 4, 1.5, depth - y)),
-    kind: zone.kind ?? "sales",
+    x: snap(clamp(zone.x ?? 0, 0, Math.max(0, width - w))),
+    y: snap(clamp(zone.y ?? 0, 0, Math.max(0, depth - h))),
+    w: snap(w),
+    h: snap(h),
+    kind: coerceZoneKind(zone.kind, zone.name),
   };
+}
+
+function coerceZoneKind(kind: string | undefined, name?: string): ZoneKind {
+  const known: ZoneKind[] = [
+    "entry",
+    "sales",
+    "service",
+    "back",
+    "wet",
+    "circulation",
+    "living",
+    "work",
+  ];
+  if (kind && (known as string[]).includes(kind)) {
+    return kind as ZoneKind;
+  }
+  const text = `${kind ?? ""} ${name ?? ""}`.toLowerCase();
+  if (/park|entry|garage/.test(text)) {
+    return "entry";
+  }
+  if (/bath|toilet|wash|wet|kitchen/.test(text)) {
+    return "wet";
+  }
+  if (/hall|stair|circul/.test(text)) {
+    return "circulation";
+  }
+  if (/store|wardrobe|dress/.test(text)) {
+    return "back";
+  }
+  return "living";
 }
 
 function snap(value: number): number {

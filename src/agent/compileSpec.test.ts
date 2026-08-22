@@ -162,4 +162,28 @@ describe("compileSpec spire", () => {
       expect(floor.rooms).toHaveLength(0);
     }
   });
+
+  test("builds different rooms on each storey from a plan sheet", () => {
+    const plan = compileSpec({
+      typology: "residential",
+      width: 8,
+      depth: 12,
+      measured: true,
+      levels: [
+        {
+          name: "Ground Floor",
+          zones: [{ id: "parking", name: "Parking", x: 4, y: 0, w: 3.5, h: 5, kind: "entry" }],
+        },
+        {
+          name: "First Floor",
+          zones: [{ id: "kitchen", name: "Kitchen", x: 4, y: 8, w: 3, h: 3, kind: "wet" }],
+        },
+      ],
+    });
+    expect(plan.floors).toHaveLength(2);
+    expect(plan.floors[0].name).toBe("Ground Floor");
+    expect(plan.floors[0].rooms.some((room) => room.name === "Parking")).toBe(true);
+    expect(plan.floors[1].rooms.some((room) => room.name === "Kitchen")).toBe(true);
+    expect(plan.floors[1].rooms.some((room) => room.name === "Parking")).toBe(false);
+  });
 });

@@ -1,16 +1,26 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import {
+  buildVisionUserContent,
+  localLlmBaseUrl,
+  localLlmModel,
+  type VisionRequest,
+} from "./localLlm.ts";
+import {
+  applyMasterCall,
+  MASTER_PROMPT,
+  MASTER_TOOLS,
+  messageText,
+  parseMasterCall,
+} from "./masterIntent.ts";
 
 export type ServerProvider =
   | "replicate"
-  | "cursor"
   | "gemini"
   | "groq"
   | "openai"
   | "openrouter"
   | "gateway"
-  | "ollama";
+  | "ollama"
+  | "local";
 
 const REPLICATE_MODEL = "google/gemini-3.5-flash";
 
@@ -18,6 +28,8 @@ export interface ProviderConfig {
   provider: ServerProvider;
   model: string;
   apiKey: string;
+  /** OpenAI-compat base ending in /v1, used by the on-LAN vision box. */
+  baseUrl?: string;
 }
 
 export const SYSTEM_PROMPT = `You are E-kon's construction orchestrator using Gemini 3.5 Flash on Replicate.
@@ -99,54 +111,45 @@ plan summary. To take the roof off the live model, emit
 {"type":"patch_roof","patch":{"visible":false}} — do not replace the plan.
 Units are meters.`;
 
-/**
- * Credentials the SDKs hold themselves rather than exposing as env vars. The
- * Cursor SDK persists a minted key to `~/.cursor/sdk/auth.json` after
- * `Cursor.auth.login()`, so a logged-in user has no `CURSOR_API_KEY` to find.
- */
-export interface ProviderCredentials {
-  cursorLogin?: boolean;
-}
-
 export function envFlags(
   env: Record<string, string>,
-  credentials: ProviderCredentials = {},
 ): Record<ServerProvider, boolean> {
   return {
     replicate: Boolean(env.REPLICATE_API_TOKEN || env.REPLICATE_API_KEY),
-    cursor: Boolean(env.CURSOR_API_KEY) || Boolean(credentials.cursorLogin),
     gemini: Boolean(env.REPLICATE_API_TOKEN || env.REPLICATE_API_KEY),
     groq: Boolean(env.GROQ_API_KEY),
     openai: Boolean(env.OPENAI_API_KEY),
     openrouter: Boolean(env.OPENROUTER_API_KEY),
     gateway: Boolean(env.AI_GATEWAY_API_KEY),
     ollama: false,
+    local: Boolean(env.ECON_LOCAL_LLM_URL || env.ECON_AGENT_PROVIDER === "local"),
   };
 }
 
 export function resolveConfig(
   env: Record<string, string>,
   requested?: Partial<ProviderConfig>,
-  credentials: ProviderCredentials = {},
 ): ProviderConfig | null {
   const provider = (requested?.provider ??
     env.ECON_AGENT_PROVIDER ??
-    firstAvailable(env, credentials)) as ServerProvider | undefined;
+    firstAvailable(env)) as ServerProvider | undefined;
   if (!provider) {
     return null;
   }
   const apiKey = requested?.apiKey || envKey(env, provider);
-  // Ollama is unauthenticated, and the Cursor SDK resolves its own stored login
-  // when no key is passed, so neither needs one up front.
-  const selfAuthenticating =
-    provider === "ollama" || (provider === "cursor" && Boolean(credentials.cursorLogin));
+  // The local VL box and Ollama are both unauthenticated.
+  const selfAuthenticating = provider === "ollama" || provider === "local";
   if (!selfAuthenticating && !apiKey) {
     return null;
   }
-  const model = requested?.model || env.ECON_AGENT_MODEL || defaultModel(provider);
+  const model =
+    provider === "local"
+      ? localLlmModel(env, requested?.model)
+      : requested?.model || env.ECON_AGENT_MODEL || defaultModel(provider);
   return {
     provider,
     apiKey,
+    baseUrl: provider === "local" ? localLlmBaseUrl(env) : requested?.baseUrl,
     // Normalized here so the model reported back to the client is the one that
     // actually ran.
     model:
@@ -178,21 +181,6 @@ export function pickOllamaModel(
   return installed[0] ?? defaultModel("ollama");
 }
 
-/**
- * Whether `npm run login:cursor` has left a usable credential behind. Never
- * returns the key itself, and a missing or expired login reads as false rather
- * than throwing so a logged-out machine still serves status.
- */
-export async function probeCursorLogin(): Promise<boolean> {
-  try {
-    const { Cursor } = await import("@cursor/sdk");
-    const status = await Cursor.auth.status();
-    return status.status === "logged-in";
-  } catch {
-    return false;
-  }
-}
-
 export async function probeOllama(): Promise<{ up: boolean; models: string[] }> {
   try {
     const response = await fetch("http://127.0.0.1:11434/api/tags");
@@ -213,26 +201,25 @@ export async function completeJson(
   config: ProviderConfig,
   userPayload: unknown,
 ): Promise<{ parsed: Record<string, unknown>; model: string; provider: ServerProvider }> {
+  if (config.provider === "local") {
+    const parsed = await completeLocalMaster(config, userPayload as VisionRequest);
+    return { parsed, model: config.model, provider: config.provider };
+  }
   const user = JSON.stringify(userPayload);
   const content =
-    config.provider === "cursor"
-      ? await completeCursor(config, user)
-      : config.provider === "replicate" || config.provider === "gemini"
-        ? await completeReplicateGemini(config, user)
-        : await completeOpenAiCompat(config, user);
-  const parsed = parseModelJson(content);
-  return { parsed, model: config.model, provider: config.provider };
+    config.provider === "replicate" || config.provider === "gemini"
+      ? await completeReplicateGemini(config, user)
+      : await completeOpenAiCompat(config, user);
+  return { parsed: parseModelJson(content), model: config.model, provider: config.provider };
 }
 
-function firstAvailable(
-  env: Record<string, string>,
-  credentials: ProviderCredentials = {},
-): ServerProvider | undefined {
-  const flags = envFlags(env, credentials);
+/** The on-LAN VL box is the planner; the hosted models are only a fallback. */
+function firstAvailable(env: Record<string, string>): ServerProvider | undefined {
+  const flags = envFlags(env);
   const order: ServerProvider[] = [
+    "local",
     "replicate",
     "gemini",
-    "cursor",
     "groq",
     "openai",
     "openrouter",
@@ -247,9 +234,6 @@ function envKey(env: Record<string, string>, provider: ServerProvider): string {
     return (
       env.REPLICATE_API_TOKEN || env.REPLICATE_API_KEY || ""
     );
-  }
-  if (provider === "cursor") {
-    return env.CURSOR_API_KEY ?? "";
   }
   if (provider === "groq") {
     return env.GROQ_API_KEY ?? "";
@@ -270,9 +254,6 @@ function defaultModel(provider: ServerProvider): string {
   if (provider === "replicate" || provider === "gemini") {
     return REPLICATE_MODEL;
   }
-  if (provider === "cursor") {
-    return "composer-2.5";
-  }
   if (provider === "groq") {
     return "llama-3.3-70b-versatile";
   }
@@ -285,23 +266,92 @@ function defaultModel(provider: ServerProvider): string {
   if (provider === "gateway") {
     return "openai/gpt-5.4";
   }
+  if (provider === "local") {
+    return localLlmModel({});
+  }
   return "llama3.2";
 }
 
-function endpoint(provider: ServerProvider): string {
-  if (provider === "groq") {
+function endpoint(config: ProviderConfig): string {
+  if (config.provider === "groq") {
     return "https://api.groq.com/openai/v1/chat/completions";
   }
-  if (provider === "openai") {
+  if (config.provider === "openai") {
     return "https://api.openai.com/v1/chat/completions";
   }
-  if (provider === "openrouter") {
+  if (config.provider === "openrouter") {
     return "https://openrouter.ai/api/v1/chat/completions";
   }
-  if (provider === "gateway") {
+  if (config.provider === "gateway") {
     return "https://ai-gateway.vercel.sh/v1/chat/completions";
   }
+  if (config.provider === "local") {
+    return `${config.baseUrl ?? localLlmBaseUrl({})}/chat/completions`;
+  }
   return "http://127.0.0.1:11434/v1/chat/completions";
+}
+
+async function completeLocalMaster(
+  config: ProviderConfig,
+  request: VisionRequest,
+): Promise<Record<string, unknown>> {
+  const messages = [
+    { role: "system", content: MASTER_PROMPT },
+    { role: "user", content: buildVisionUserContent(request) },
+  ];
+  const withTools = await postLocalChat(config, {
+    messages,
+    tools: MASTER_TOOLS,
+  });
+  const first = withTools.ok ? withTools.payload.choices?.[0]?.message : undefined;
+  const payload =
+    first && (first.tool_calls || messageText(first.content).trim())
+      ? withTools.payload
+      : (await postLocalChat(config, { messages })).payload;
+  const message = payload.choices?.[0]?.message;
+  if (!message) {
+    throw new Error(
+      payload.error?.message ?? withTools.error ?? "Local VL returned an empty completion",
+    );
+  }
+  const call = parseMasterCall(messageText(message.content), {
+    tool_calls: message.tool_calls,
+  });
+  return applyMasterCall(call, request);
+}
+
+async function postLocalChat(
+  config: ProviderConfig,
+  body: { messages: unknown[]; tools?: unknown },
+): Promise<{
+  ok: boolean;
+  error?: string;
+  payload: {
+    error?: { message?: string };
+    choices?: { message?: { content?: unknown; tool_calls?: unknown } }[];
+  };
+}> {
+  const response = await fetch(endpoint(config), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: config.model,
+      // Greedy: reading a sheet has one right answer, and sampling makes the
+      // same drawing come back as a different house each time.
+      temperature: 0,
+      max_tokens: 4096,
+      ...body,
+    }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: { message?: string };
+    choices?: { message?: { content?: unknown; tool_calls?: unknown } }[];
+  };
+  return {
+    ok: response.ok,
+    error: payload.error?.message ?? (response.ok ? undefined : `Local VL returned ${response.status}`),
+    payload,
+  };
 }
 
 async function completeOpenAiCompat(
@@ -318,7 +368,7 @@ async function completeOpenAiCompat(
     headers["HTTP-Referer"] = "http://localhost:5173";
     headers["X-Title"] = "E-kon";
   }
-  const response = await fetch(endpoint(config.provider), {
+  const response = await fetch(endpoint(config), {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -343,33 +393,6 @@ async function completeOpenAiCompat(
     throw new Error("Provider returned an empty completion");
   }
   return content;
-}
-
-async function completeCursor(
-  config: ProviderConfig,
-  user: string,
-): Promise<string> {
-  const { Agent } = await import("@cursor/sdk");
-  const cwd = await mkdtemp(join(tmpdir(), "econ-cursor-"));
-  const result = await Agent.prompt(
-    `${SYSTEM_PROMPT}\n\nCurrent request:\n${user}\n\nReply with the JSON object only. Do not edit files.`,
-    {
-      // Omitted rather than empty so the SDK can fall back to CURSOR_API_KEY
-      // and then the stored `Cursor.auth.login()` key.
-      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
-      model: { id: config.model },
-      name: "E-kon construction planner",
-      tools: [],
-      local: { cwd, settingSources: [] },
-    },
-  );
-  if (result.status === "error") {
-    throw new Error(result.error?.message ?? "Cursor agent failed");
-  }
-  if (!result.result) {
-    throw new Error("Cursor returned an empty result");
-  }
-  return result.result;
 }
 
 interface ReplicatePrediction {
@@ -476,10 +499,11 @@ function wait(ms: number): Promise<void> {
 }
 
 function parseModelJson(content: string): Record<string, unknown> {
-  const trimmed = content.trim();
+  const trimmed = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = fenced?.[1] ?? trimmed;
-  const parsed = JSON.parse(raw) as unknown;
+  const object = raw.match(/\{[\s\S]*\}/);
+  const parsed = JSON.parse(object?.[0] ?? raw) as unknown;
   if (!parsed || typeof parsed !== "object") {
     throw new Error("Model did not return a JSON object");
   }

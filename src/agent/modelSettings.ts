@@ -1,12 +1,12 @@
 export type ModelProvider =
   | "replicate"
-  | "cursor"
   | "gemini"
   | "groq"
   | "openai"
   | "openrouter"
   | "gateway"
-  | "ollama";
+  | "ollama"
+  | "local";
 
 export interface ModelSettings {
   provider: ModelProvider;
@@ -22,11 +22,6 @@ export const PROVIDER_DEFAULTS: Record<
     label: "Replicate · Gemini 3.5 Flash",
     model: "google/gemini-3.5-flash",
     hint: "replicate.com/account/api-tokens",
-  },
-  cursor: {
-    label: "Cursor",
-    model: "composer-2.5",
-    hint: "cursor.com/dashboard/integrations",
   },
   gemini: {
     label: "Gemini (via Replicate)",
@@ -58,15 +53,20 @@ export const PROVIDER_DEFAULTS: Record<
     model: "llama3.2",
     hint: "localhost:11434 — no key",
   },
+  local: {
+    label: "Local VL · GB10",
+    model: "Qwen3VL-30B-A3B-Instruct-Q4_K_M.gguf",
+    hint: "10.0.1.20:8080 — no key",
+  },
 };
 
 const STORAGE_KEY = "econ-model-settings";
 
 export function defaultModelSettings(): ModelSettings {
   return {
-    provider: "replicate",
+    provider: "local",
     apiKey: "",
-    model: PROVIDER_DEFAULTS.replicate.model,
+    model: PROVIDER_DEFAULTS.local.model,
   };
 }
 
@@ -78,13 +78,16 @@ export function loadModelSettings(): ModelSettings {
       return fallback;
     }
     const parsed = JSON.parse(raw) as Partial<ModelSettings>;
-    const provider = parsed.provider ?? fallback.provider;
-    const defaults = PROVIDER_DEFAULTS[provider] ?? PROVIDER_DEFAULTS.replicate;
+    // A session saved against a provider that no longer exists must not pin the
+    // chat to something the server can no longer run.
+    const known = parsed.provider && PROVIDER_DEFAULTS[parsed.provider];
+    const provider = known ? (parsed.provider as ModelProvider) : fallback.provider;
+    const defaults = PROVIDER_DEFAULTS[provider];
     return {
-      provider: defaults ? provider : "replicate",
-      apiKey: parsed.apiKey ?? "",
+      provider,
+      apiKey: known ? (parsed.apiKey ?? "") : "",
       model:
-        parsed.model && parsed.model !== "gemini-2.5-flash"
+        known && parsed.model && parsed.model !== "gemini-2.5-flash"
           ? parsed.model
           : defaults.model,
     };
@@ -96,6 +99,7 @@ export function loadModelSettings(): ModelSettings {
 export interface AgentStatus {
   env: Record<ModelProvider, boolean>;
   ollama: { up: boolean; models: string[] };
+  local?: { up: boolean; models: string[]; url: string };
   defaultProvider: ModelProvider;
 }
 
@@ -109,13 +113,17 @@ export function providerHasServerKey(
   if (provider === "ollama") {
     return status.ollama.up;
   }
+  if (provider === "local") {
+    return Boolean(status.local?.up || status.env.local);
+  }
   return status.env[provider];
 }
 
 /**
  * The provider the chat runs on. There is no picker in the UI, so this follows
- * whatever the server reports it can serve. On-device Ollama comes last because
- * it is the weakest planner.
+ * whatever the server reports it can serve. The local VL box leads because it
+ * is the planner this app is built around; on-device Ollama comes last because
+ * it is the weakest.
  */
 export function preferredProvider(status: AgentStatus | null): ModelProvider | null {
   if (!status) {
@@ -123,9 +131,9 @@ export function preferredProvider(status: AgentStatus | null): ModelProvider | n
   }
   const order: ModelProvider[] = [
     status.defaultProvider,
+    "local",
     "replicate",
     "gemini",
-    "cursor",
     "groq",
     "openai",
     "openrouter",

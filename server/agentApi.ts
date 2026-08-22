@@ -3,11 +3,11 @@ import {
   completeJson,
   envFlags,
   pickOllamaModel,
-  probeCursorLogin,
   probeOllama,
   resolveConfig,
   type ServerProvider,
 } from "./modelProviders.ts";
+import { localLlmModel, probeLocalLlm } from "./localLlm.ts";
 import { lookupNycBuilding } from "./nycGis.ts";
 
 /**
@@ -42,26 +42,29 @@ export async function handleGis(req: IncomingMessage, res: ServerResponse) {
 }
 
 export async function handleStatus(env: AgentEnv, res: ServerResponse) {
-  const [ollama, cursorLogin] = await Promise.all([probeOllama(), probeCursorLogin()]);
-  const flags = envFlags(env, { cursorLogin });
+  const [ollama, local] = await Promise.all([probeOllama(), probeLocalLlm(env)]);
+  const flags = envFlags(env);
   flags.ollama = ollama.up;
+  flags.local = local.up || flags.local;
   res.setHeader("Content-Type", "application/json");
   res.end(
     JSON.stringify({
       env: flags,
       ollama,
-      cursorLogin,
+      local,
+      // The VL box wins whenever it answers; a hosted key is only there to keep
+      // the chat usable when the box is off.
       defaultProvider:
         env.ECON_AGENT_PROVIDER ??
-        (flags.replicate
-          ? "replicate"
-          : flags.gemini
-            ? "gemini"
-            : flags.cursor
-              ? "cursor"
+        (local.up
+          ? "local"
+          : flags.replicate
+            ? "replicate"
+            : flags.gemini
+              ? "gemini"
               : ollama.up
                 ? "ollama"
-                : "cursor"),
+                : "local"),
     }),
   );
 }
@@ -76,21 +79,26 @@ export async function handleAgent(
       text?: string;
       role?: string;
       plan?: string;
+      locked?: boolean;
       attachments?: unknown[];
       provider?: ServerProvider;
       apiKey?: string;
       model?: string;
     };
-    const [ollama, cursorLogin] = await Promise.all([probeOllama(), probeCursorLogin()]);
-    let config = resolveConfig(
-      env,
-      {
-        provider: body.provider,
-        apiKey: body.apiKey,
-        model: body.model,
-      },
-      { cursorLogin },
-    );
+    const [ollama, local] = await Promise.all([probeOllama(), probeLocalLlm(env)]);
+    let config = resolveConfig(env, {
+      provider: body.provider,
+      apiKey: body.apiKey,
+      model: body.model,
+    });
+    if (!config && local.up) {
+      config = {
+        provider: "local",
+        apiKey: "",
+        model: localLlmModel(env, body.model),
+        baseUrl: local.url,
+      };
+    }
     if (!config && ollama.up) {
       config = { provider: "ollama", apiKey: "", model: "" };
     }
@@ -98,6 +106,10 @@ export async function handleAgent(
       // Ollama 404s on a model that was never pulled, so the name is always
       // reconciled against the install list rather than trusted.
       config.model = pickOllamaModel(body.model, env.ECON_AGENT_MODEL, ollama.models);
+    }
+    if (config?.provider === "local") {
+      config.model = localLlmModel(env, body.model || config.model);
+      config.baseUrl = config.baseUrl ?? local.url;
     }
     if (!config) {
       res.statusCode = 204;
@@ -108,6 +120,7 @@ export async function handleAgent(
     const result = await completeJson(config, {
       text: body.text,
       role: body.role,
+      locked: body.locked,
       plan: body.plan,
       attachments: body.attachments ?? [],
     });

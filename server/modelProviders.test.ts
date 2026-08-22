@@ -55,40 +55,6 @@ describe("pickOllamaModel", () => {
   });
 });
 
-describe("cursor model credentials", () => {
-  test("runs the cursor model from a stored SDK login with no key in the env", () => {
-    const config = resolveConfig({}, { provider: "cursor" }, { cursorLogin: true });
-
-    expect(config?.provider).toBe("cursor");
-    expect(config?.model).toBeTruthy();
-  });
-
-  test("refuses cursor when there is neither a key nor a login", () => {
-    expect(resolveConfig({}, { provider: "cursor" }, { cursorLogin: false })).toBeNull();
-  });
-
-  test("prefers an explicit cursor key over the stored login", () => {
-    const config = resolveConfig(
-      { CURSOR_API_KEY: "from-env" },
-      { provider: "cursor" },
-      { cursorLogin: true },
-    );
-
-    expect(config?.apiKey).toBe("from-env");
-  });
-
-  test("reports cursor as available once a login is stored", () => {
-    expect(envFlags({}, { cursorLogin: true }).cursor).toBe(true);
-    expect(envFlags({}).cursor).toBe(false);
-  });
-
-  test("autodetects the cursor model when only a login is present", () => {
-    const config = resolveConfig({}, undefined, { cursorLogin: true });
-
-    expect(config?.provider).toBe("cursor");
-  });
-});
-
 describe("gemini model credentials", () => {
   test("needs a replicate token", () => {
     expect(resolveConfig({}, { provider: "gemini" })).toBeNull();
@@ -100,13 +66,36 @@ describe("gemini model credentials", () => {
     expect(config?.apiKey).toBe("r8_test");
     expect(config?.model).toContain("gemini");
   });
+});
 
-  test("prefers a replicate token over a stored cursor login", () => {
-    const config = resolveConfig({ REPLICATE_API_TOKEN: "r8_test" }, undefined, {
-      cursorLogin: true,
+describe("local VL provider", () => {
+  test("needs no key", () => {
+    const config = resolveConfig(
+      { ECON_AGENT_PROVIDER: "local", ECON_LOCAL_LLM_URL: "http://10.0.1.20:8080/v1" },
+      { provider: "local" },
+    );
+    expect(config?.provider).toBe("local");
+    expect(config?.baseUrl).toBe("http://10.0.1.20:8080/v1");
+    expect(config?.model).toMatch(/Qwen3VL/);
+  });
+
+  test("is available when the GB10 URL is set", () => {
+    expect(envFlags({ ECON_LOCAL_LLM_URL: "http://10.0.1.20:8080/v1" }).local).toBe(true);
+  });
+
+  test("is chosen over a hosted key when the box is configured", () => {
+    const config = resolveConfig({
+      ECON_LOCAL_LLM_URL: "http://10.0.1.20:8080/v1",
+      REPLICATE_API_TOKEN: "r8_test",
     });
 
-    expect(config?.provider).toBe("replicate");
+    expect(config?.provider).toBe("local");
+    expect(config?.model).toMatch(/Qwen3VL/);
+  });
+
+  test("has no cursor provider left to fall back to", () => {
+    expect(envFlags({ CURSOR_API_KEY: "sk-test" })).not.toHaveProperty("cursor");
+    expect(resolveConfig({ CURSOR_API_KEY: "sk-test" })).toBeNull();
   });
 });
 

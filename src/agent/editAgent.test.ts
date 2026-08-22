@@ -15,6 +15,7 @@ describe("roof edits", () => {
       { type: "patch_roof", patch: { visible: true } },
     ]);
   });
+  
 
   test("maps an L3 living-room size change to a live resize", () => {
     expect(planEdits("increase the l3 living room size to 38 m", mockFloorPlan)).toEqual([

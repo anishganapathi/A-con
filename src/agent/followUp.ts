@@ -34,6 +34,12 @@ export function narrateEdit(
   if (intent.kind === "keep_roof") {
     return { reply: "Keeping the roof on." };
   }
+  if (intent.kind === "read_drawing") {
+    return {
+      reply:
+        "I can read that elevation on the local vision model, but it is not reachable. Check the GB10 at 10.0.1.20:8080.",
+    };
+  }
   return {
     reply: `Edit agent applied the change to the live FloorPlan.`,
   };

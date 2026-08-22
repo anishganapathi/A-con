@@ -27,7 +27,7 @@ const SIZE_STRETCH = 1.35;
  */
 export function buildSpecQuestions(spec: BuildingSpec): SpecQuestion[] {
   // A surveyed building's envelope is measured, not chosen.
-  if (spec.survey) {
+  if (spec.survey || spec.measured) {
     return [];
   }
   return [footprintQuestion(spec), heightQuestion(spec), windowQuestion(spec)];

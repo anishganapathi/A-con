@@ -92,6 +92,95 @@ describe("model-authored outline", () => {
     expect(signedArea(spec.footprint!)).toBeGreaterThan(0);
   });
 
+  test("does not copy a 3-storey live model onto a measured bungalow sheet", () => {
+    const spec = normalizeSpec({
+      typology: "residential",
+      width: 25,
+      depth: 40,
+      stories: 3,
+      storyHeight: 3.6,
+      measured: true,
+    });
+    expect(spec.stories).toBe(2);
+    expect(spec.storyHeight).toBe(3);
+  });
+
+  test("reads rooms stuffed into footprint and drops invented upper floors", () => {
+    const spec = normalizeSpec({
+      typology: "residential",
+      width: 7.6,
+      depth: 12.2,
+      stories: 2,
+      measured: true,
+      roof: { type: "gable" } as never,
+      footprint: [
+        {
+          name: "Ground Floor",
+          zones: [{ id: "parking", name: "Parking", x: 4.6, y: 0, w: 3, h: 5.1, kind: "entry" }],
+        },
+        {
+          name: "First Floor",
+          zones: [{ id: "kitchen", name: "Kitchen", x: 4.3, y: 7.6, w: 2.4, h: 3, kind: "wet" }],
+        },
+        {
+          name: "Second Floor",
+          zones: [{ id: "l2", name: "L2 Living Room", x: 0, y: 0, w: 7.6, h: 4.4, kind: "living" }],
+        },
+      ] as never,
+    });
+    expect(spec.stories).toBe(2);
+    expect(spec.levels?.map((level) => level.name)).toEqual(["Ground Floor", "First Floor"]);
+    expect(spec.roof).toBe("standing-seam");
+  });
+
+  test("keeps different rooms on each storey from the sheet", () => {
+    const spec = normalizeSpec({
+      typology: "residential",
+      width: 7.6,
+      depth: 12.2,
+      measured: true,
+      levels: [
+        {
+          name: "Ground Floor",
+          zones: [{ id: "parking", name: "Parking", x: 4, y: 0, w: 3, h: 5, kind: "entry" }],
+        },
+        {
+          name: "First Floor",
+          zones: [{ id: "kitchen", name: "Kitchen", x: 4, y: 8, w: 2.4, h: 3, kind: "wet" }],
+        },
+      ],
+    });
+    expect(spec.stories).toBe(2);
+    expect(spec.levels?.[0].zones[0].name).toBe("Parking");
+    expect(spec.levels?.[1].zones[0].name).toBe("Kitchen");
+  });
+
+  test("converts a 25 × 40 ft bungalow plate to metres", () => {
+    const spec = normalizeSpec({
+      typology: "residential",
+      width: 25,
+      depth: 40,
+      stories: 2,
+      measured: true,
+    });
+    expect(spec.width).toBeCloseTo(7.6, 1);
+    expect(spec.depth).toBeCloseTo(12.2, 1);
+    expect(spec.measured).toBe(true);
+  });
+
+  test("ignores a footprint object that is not a ring", () => {
+    const spec = normalizeSpec({
+      typology: "residential",
+      width: 12,
+      depth: 9,
+      stories: 2,
+      footprint: { width: 12, depth: 9 } as never,
+    });
+    expect(spec.footprint).toBeUndefined();
+    expect(spec.width).toBe(12);
+    expect(spec.stories).toBe(2);
+  });
+
   test("ignores an outline with no area", () => {
     const spec = normalizeSpec({
       typology: "office",
@@ -239,3 +328,46 @@ describe("model-authored tip height", () => {
     expect(plan.roof.ridgeHeight).toBeGreaterThanOrEqual(70);
   });
 });
+
+describe("levels padded past the sheet", () => {
+  const drawn = [
+    { id: "a", name: "Hall", x: 0, y: 0, w: 4, h: 6, kind: "circulation" as const },
+    { id: "b", name: "Bedroom", x: 4, y: 0, w: 4, h: 6, kind: "living" as const },
+  ];
+  const padded = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      name: index === 0 ? "Ground Floor" : index === 1 ? "First Floor" : `Level ${index + 1}`,
+      zones: drawn.map((zone) => ({ ...zone, name: `L${index + 1} ${zone.name}` })),
+    }));
+
+  test("keeps only the storeys the model declared", () => {
+    const spec = normalizeSpec({
+      typology: "residential",
+      width: 8,
+      depth: 6,
+      stories: 2,
+      measured: true,
+      levels: padded(12),
+    });
+
+    expect(spec.stories).toBe(2);
+    expect(spec.levels).toHaveLength(2);
+  });
+
+  test("stops at a plate that repeats an earlier one", () => {
+    const spec = normalizeSpec({
+      typology: "residential",
+      width: 8,
+      depth: 6,
+      measured: true,
+      levels: [
+        { name: "Ground Floor", zones: drawn },
+        { name: "First Floor", zones: drawn.map((zone) => ({ ...zone, y: zone.y + 0 })) },
+        { name: "Roof Terrace", zones: drawn },
+      ],
+    });
+
+    expect(spec.levels).toHaveLength(2);
+  });
+});
+
