@@ -1,5 +1,6 @@
 import type { FloorPlan } from "../types/floorPlan";
 import { bindVisionEdits } from "./bindVisionEdits";
+import { planEdits } from "./editAgent";
 import {
   applyElevationMatch,
   elevationMatchReply,
@@ -7,6 +8,7 @@ import {
   type ElevationBrief,
 } from "./matchElevation";
 import { normalizeSpec, type BuildingSpec } from "./buildingSpec";
+import { actionsFromIntent, interpretIntent } from "./intentAgent";
 import type { ModelSettings } from "./modelSettings";
 import { summarizePlan } from "./summarize";
 import type { AgentRole, AgentTurn, BuildBrief, ChatAttachment } from "./types";
@@ -78,6 +80,12 @@ export async function planLlmActions(input: {
       if (matched.length > 0) {
         actions = matched;
         reply = elevationMatchReply(data.reply ?? "", matched);
+      }
+    }
+    if (raw.length > 0 && actions.length === 0 && !data.spec && !data.brief) {
+      const rescued = rescueEdits(input.text, input.plan);
+      if (rescued.length > 0) {
+        actions = rescued;
       }
     }
     // A confident reply with nothing bound behind it reads as a silent failure.
@@ -160,4 +168,12 @@ function briefToSpec(brief: Partial<BuildBrief> | undefined): Partial<BuildingSp
     notes: brief?.notes,
     project: brief?.project,
   };
+}
+
+/** When the VL names the right edit but in a shape bindVisionEdits drops, fall back to local intent. */
+function rescueEdits(text: string, plan: FloorPlan): AgentTurn["actions"] {
+  const intent = interpretIntent(text, plan);
+  const raw =
+    intent.kind === "freeform" ? planEdits(text, plan) : actionsFromIntent(intent);
+  return bindVisionEdits(plan, raw, text);
 }

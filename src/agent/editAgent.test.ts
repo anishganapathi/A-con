@@ -23,6 +23,12 @@ describe("roof edits", () => {
     ]);
   });
 
+  test("maps a from-to living room resize", () => {
+    expect(
+      planEdits("increase the size of the living room from 16.4 m to 19 m", mockFloorPlan),
+    ).toEqual([{ type: "resize_room", roomId: "living", areaSqM: 19 }]);
+  });
+
   test("keeps kitchen space when a living room grows a little", () => {
     const next = applyAgentAction(mockFloorPlan, {
       type: "resize_room",

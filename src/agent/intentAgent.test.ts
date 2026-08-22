@@ -62,4 +62,29 @@ describe("intent agent", () => {
       stack: true,
     });
   });
+
+  test("reads a from-to resize and picks the room by its current area", () => {
+    const plan = {
+      ...mockFloorPlan,
+      floors: mockFloorPlan.floors.map((floor) =>
+        floor.id === "l2"
+          ? {
+              ...floor,
+              rooms: floor.rooms.map((room) =>
+                room.id === "l2-living" ? { ...room, areaSqM: 16.4 } : room,
+              ),
+            }
+          : floor,
+      ),
+    };
+    const intent = interpretIntent(
+      "increase the size of the living room from 16.4 m to 19 m",
+      plan,
+    );
+    expect(intent).toMatchObject({
+      kind: "resize_room",
+      roomId: "l2-living",
+      areaSqM: 19,
+    });
+  });
 });

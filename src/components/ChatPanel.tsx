@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { BuildingSpec } from "../agent/buildingSpec";
 import { compileSpec } from "../agent/compileSpec";
 import type { AgentStatus, ModelSettings } from "../agent/modelSettings";
@@ -42,6 +42,7 @@ export function ChatPanel() {
   const [followUp, setFollowUp] = useState<FollowUp | null>(null);
   const [review, setReview] = useState<EditNotice | null>(null);
   const [locked, setLocked] = useState(false);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const messageSeq = useRef(0);
   const questions = useMemo(
@@ -88,6 +89,32 @@ export function ChatPanel() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!menu) {
+      return;
+    }
+    const close = () => setMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
+
+  const deleteMessage = (id: string) => {
+    setMessages((current) => current.filter((message) => message.id !== id));
+    setMenu(null);
+  };
+
+  const openMessageMenu = (event: MouseEvent, id: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ id, x: event.clientX, y: event.clientY });
+  };
 
   const nextId = (prefix: string) => {
     messageSeq.current += 1;
@@ -346,6 +373,7 @@ export function ChatPanel() {
                 className={
                   message.role === "user" ? "chat-bubble is-user" : "chat-bubble"
                 }
+                onContextMenu={(event) => openMessageMenu(event, message.id)}
               >
                 {message.agent ? (
                   <span className="chat-agent">
@@ -443,6 +471,25 @@ export function ChatPanel() {
             ) : null}
             {busy ? <p className="chat-pending">Agent working…</p> : null}
           </div>
+
+          {menu ? (
+            <div
+              className="chat-context-menu"
+              style={{ top: menu.y, left: menu.x }}
+              role="menu"
+              onClick={(event) => event.stopPropagation()}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="chat-context-item is-danger"
+                onClick={() => deleteMessage(menu.id)}
+              >
+                Delete
+              </button>
+            </div>
+          ) : null}
 
           {files.length > 0 ? (
             <p className="chat-attached">

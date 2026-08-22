@@ -27,6 +27,26 @@ describe("bindVisionEdits", () => {
     ).toEqual([{ type: "resize_room", roomId: "l3-living", areaSqM: 90 }]);
   });
 
+  test("turns a patch_room area into a real resize", () => {
+    expect(
+      bindVisionEdits(mockFloorPlan, [
+        {
+          type: "patch_room",
+          roomId: "living room",
+          patch: { area: 19 },
+        },
+      ]),
+    ).toEqual([{ type: "resize_room", roomId: "living", areaSqM: 19 }]);
+  });
+
+  test("accepts resize aliases from the VL", () => {
+    expect(
+      bindVisionEdits(mockFloorPlan, [
+        { type: "resize_room", room: "living", area: 19 } as never,
+      ]),
+    ).toEqual([{ type: "resize_room", roomId: "living", areaSqM: 19 }]);
+  });
+
   test("does not crash when the VL omits patch", () => {
     expect(
       bindVisionEdits(mockFloorPlan, [

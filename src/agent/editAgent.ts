@@ -94,10 +94,14 @@ export function planEdits(text: string, plan: FloorPlan): AgentAction[] {
   }
 
   const resize = text.match(
-    /(?:increase|enlarge|resize|expand|grow|set|make|decrease|reduce|shrink)\s+(?:the\s+)?(.+?)\s+(?:size|area)\s+to\s+(\d+(?:\.\d+)?)/i,
+    /(?:increase|enlarge|resize|expand|grow|set|make|decrease|reduce|shrink)\s+(?:the\s+)?(?:size\s+of\s+)?(?:the\s+)?(.+?)\s+(?:size|area)\s+to\s+(\d+(?:\.\d+)?)/i,
   );
-  if (resize?.[1] && resize[2]) {
-    const found = findNamed(plan, resize[1].replace(/\s+(?:size|area)$/i, ""));
+  const fromTo = text.match(
+    /(?:increase|enlarge|resize|expand|grow|set|make|decrease|reduce|shrink)\s+(?:the\s+)?(?:size\s+of\s+)?(?:the\s+)?(.+?)\s+from\s+\d+(?:\.\d+)?\s*m?\s*to\s+(\d+(?:\.\d+)?)/i,
+  );
+  const growMatch = resize ?? fromTo;
+  if (growMatch?.[1] && growMatch[2]) {
+    const found = findNamed(plan, growMatch[1].replace(/\s+(?:size|area)$/i, ""));
     if (found?.selection.kind === "room") {
       const keepOtherFloors =
         /keep(?:ing)?\s+(?:the\s+)?(?:remaining|other)\s+floors|only\s+(?:this|that)\s+floor|leave\s+(?:the\s+)?(?:other|remaining)\s+floors/i.test(
@@ -106,7 +110,7 @@ export function planEdits(text: string, plan: FloorPlan): AgentAction[] {
       actions.push({
         type: "resize_room",
         roomId: found.selection.id,
-        areaSqM: Number(resize[2]),
+        areaSqM: Number(growMatch[2]),
         ...(keepOtherFloors ? { stack: false } : {}),
       });
     }

@@ -82,19 +82,41 @@ export function bindVisionEdits(
       bound.push({ ...action, roomId });
       continue;
     }
+    if (action.type === "patch_room") {
+      const roomId = resolveRoomId(plan, action.roomId);
+      const patch = (action.patch ?? {}) as Record<string, unknown>;
+      const area =
+        typeof patch.areaSqM === "number"
+          ? patch.areaSqM
+          : typeof patch.area === "number"
+            ? patch.area
+            : typeof patch.size === "number"
+              ? patch.size
+              : null;
+      if (roomId && area !== null && Number.isFinite(area)) {
+        const current = roomArea(plan, roomId);
+        if (current !== null && Math.abs(current - area) < 0.51) {
+          continue;
+        }
+        bound.push({
+          type: "resize_room",
+          roomId,
+          areaSqM: area,
+          stack: typeof patch.stack === "boolean" ? patch.stack : undefined,
+        });
+        continue;
+      }
+      if (!roomId) {
+        continue;
+      }
+      bound.push({ ...action, roomId });
+      continue;
+    }
     if (action.type === "patch_roof") {
       if (!roofWouldChange(plan, action.patch)) {
         continue;
       }
       bound.push(action);
-      continue;
-    }
-    if (action.type === "patch_room") {
-      const roomId = resolveRoomId(plan, action.roomId);
-      if (!roomId) {
-        continue;
-      }
-      bound.push({ ...action, roomId });
       continue;
     }
     if (action.type === "patch_opening") {
@@ -146,8 +168,13 @@ function coerceAction(action: AgentAction | null | undefined): AgentAction | nul
     return null;
   }
   if (action.type === "resize_room") {
-    return typeof action.roomId === "string" && Number.isFinite(action.areaSqM)
-      ? action
+    const record = action as Record<string, unknown>;
+    const roomId = record.roomId ?? record.room ?? record.targetRoom ?? record.id;
+    const areaRaw =
+      record.areaSqM ?? record.area ?? record.size ?? record.targetArea ?? record.target;
+    const areaSqM = typeof areaRaw === "number" ? areaRaw : Number(areaRaw);
+    return typeof roomId === "string" && Number.isFinite(areaSqM)
+      ? { type: "resize_room", roomId, areaSqM, stack: record.stack as boolean | undefined }
       : null;
   }
   if (

@@ -138,30 +138,95 @@ export function actionsFromIntent(intent: UserIntent): AgentAction[] {
 }
 
 function mentionRoom(utterance: string, plan: FloorPlan): string | null {
-  let bestId: string | null = null;
-  let bestScore = 0;
+  const floorHint = mentionFloor(utterance, plan);
+  const areaHint = mentionFromArea(utterance);
+  const candidates: {
+    id: string;
+    aliasScore: number;
+    areaDiff: number;
+  }[] = [];
+
   for (const floor of plan.floors) {
+    if (floorHint && floor.id !== floorHint) {
+      continue;
+    }
     for (const room of floor.rooms) {
-      for (const alias of roomAliases(room.id, room.name)) {
-        if (!utterance.includes(alias)) {
-          continue;
-        }
-        if (alias.length > bestScore) {
-          bestId = room.id;
-          bestScore = alias.length;
+      let aliasScore = 0;
+      for (const alias of roomAliases(room.id, room.name, floor.name)) {
+        if (utterance.includes(alias) && alias.length > aliasScore) {
+          aliasScore = alias.length;
         }
       }
+      if (aliasScore === 0) {
+        continue;
+      }
+      const area = room.areaSqM ?? 0;
+      candidates.push({
+        id: room.id,
+        aliasScore,
+        areaDiff: areaHint === null ? 0 : Math.abs(area - areaHint),
+      });
     }
   }
-  return bestId;
+
+  if (candidates.length === 0) {
+    return null;
+  }
+  candidates.sort((left, right) => {
+    if (areaHint !== null && left.areaDiff !== right.areaDiff) {
+      return left.areaDiff - right.areaDiff;
+    }
+    return right.aliasScore - left.aliasScore;
+  });
+  return candidates[0]?.id ?? null;
 }
 
-function roomAliases(id: string, name: string): string[] {
+function mentionFloor(utterance: string, plan: FloorPlan): string | null {
+  const lMatch = utterance.match(/\bl\s*(\d+)\b/);
+  if (lMatch?.[1]) {
+    const id = `l${lMatch[1]}`;
+    return plan.floors.find((floor) => floor.id === id)?.id ?? null;
+  }
+  if (/\b(?:ground|level\s*1|ff\.?\s*level\s*1)\b/.test(utterance)) {
+    return plan.floors[0]?.id ?? null;
+  }
+  if (/\b(?:first\s+floor|ff\.?\s*first\s+floor)\b/.test(utterance)) {
+    return (
+      plan.floors.find((floor) => /first/i.test(floor.name))?.id ??
+      plan.floors[1]?.id ??
+      plan.floors[0]?.id ??
+      null
+    );
+  }
+  if (/\b(?:second\s+floor|ff\.?\s*second\s+floor)\b/.test(utterance)) {
+    return plan.floors.find((floor) => /second/i.test(floor.name))?.id ?? plan.floors[1]?.id ?? null;
+  }
+  if (/\b(?:third\s+floor|ff\.?\s*third\s+floor)\b/.test(utterance)) {
+    return plan.floors.find((floor) => /third/i.test(floor.name))?.id ?? plan.floors[2]?.id ?? null;
+  }
+  return null;
+}
+
+function mentionFromArea(utterance: string): number | null {
+  const from = utterance.match(/\bfrom\s+(\d+(?:\.\d+)?)/);
+  return from?.[1] ? Number(from[1]) : null;
+}
+
+function roomAliases(id: string, name: string, floorName = ""): string[] {
   const aliases = new Set<string>();
   aliases.add(id.toLowerCase());
   aliases.add(name.toLowerCase());
   aliases.add(name.toLowerCase().replace(/\s+room$/, ""));
   aliases.add(id.toLowerCase().replace(/-/g, " "));
+  const core = name.replace(/^(L\d+\s+|\w+\s+Floor\s+)/i, "").trim();
+  if (core) {
+    aliases.add(core.toLowerCase());
+    aliases.add(core.toLowerCase().replace(/\s+room$/, ""));
+  }
+  if (floorName) {
+    aliases.add(`${floorName} ${name}`.toLowerCase());
+    aliases.add(`${floorName} ${name}`.toLowerCase().replace(/\s+room$/, ""));
+  }
   return [...aliases].filter((alias) => alias.length >= 3);
 }
 
