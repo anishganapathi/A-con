@@ -10,6 +10,7 @@ import type { DirectionalLight, Group } from "three";
 import { useEditor } from "../editor/EditorContext";
 import { ExperienceBuilding } from "./ExperienceBuilding";
 import { peekCameraPose } from "./cameraPose";
+import { useAnimatedPlan } from "./useAnimatedPlan";
 import { PersistedOrbitControls, usePersistedView } from "./PersistedOrbitControls";
 import {
   createDriftPositions,
@@ -20,7 +21,8 @@ import {
 
 export function ExperienceScene() {
   const { floorPlan } = useEditor();
-  const framing = useMemo(() => getExperienceFraming(floorPlan), [floorPlan]);
+  const shown = useAnimatedPlan(floorPlan);
+  const framing = useMemo(() => getExperienceFraming(shown), [shown]);
   const { span, target } = framing;
   const fallback = useMemo(
     () => ({ position: framing.cameraPosition, target: framing.target }),
@@ -90,7 +92,7 @@ export function ExperienceScene() {
         <planeGeometry args={[framing.groundSize, framing.groundSize]} />
         <meshStandardMaterial color="#070c10" roughness={1} metalness={0.1} />
       </mesh>
-      <ExperienceBuilding plan={floorPlan} />
+      <ExperienceBuilding plan={shown} />
       <DriftField framing={framing} />
       <EffectComposer>
         <Bloom

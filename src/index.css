@@ -411,6 +411,7 @@ textarea {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
+  gap: 0;
   height: 52px;
   padding: 0 76px;
   border-bottom: 1px solid rgba(31, 28, 25, 0.08);
@@ -422,6 +423,33 @@ textarea {
   /* Follows the stage down into experience mode at the same pace. */
   transition: background-color 0.45s ease, border-bottom-color 0.45s ease,
     color 0.45s ease;
+}
+
+/* Sponsor logos flank the Acon brand. Dell on the left, NVIDIA on the right,
+   both pushed to the edges of the bar so the brand stays centered. */
+.title-bar-sponsor {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 20px;
+  width: auto;
+  opacity: 0.72;
+  transition: opacity 0.45s ease, filter 0.45s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+.title-bar-sponsor.dell {
+  left: 86px;
+}
+
+.title-bar-sponsor.nvidia {
+  right: 52px;
+}
+
+.app-experience .title-bar-sponsor {
+  filter: invert(1) brightness(1.4);
+  opacity: 0.5;
 }
 
 .title-bar-logo,
@@ -1398,7 +1426,11 @@ textarea {
 
 .nemo-mark {
   flex-shrink: 0;
+  display: inline-block;
   color: #8a5a12;
+  background: currentColor;
+  -webkit-mask: url("/nemoclaw.svg") no-repeat center / contain;
+  mask: url("/nemoclaw.svg") no-repeat center / contain;
 }
 
 .app-experience .nemo-mark {
@@ -1439,6 +1471,11 @@ textarea {
   color: #9c3a22;
 }
 
+.nemo-tag.is-irrelevant {
+  background: rgba(160, 48, 48, 0.16);
+  color: #8a2424;
+}
+
 .app-experience .nemo-tag {
   color: #f2d3a2;
 }
@@ -1446,6 +1483,11 @@ textarea {
 .app-experience .nemo-tag.is-overhangs {
   background: rgba(226, 108, 78, 0.2);
   color: #f3b8a2;
+}
+
+.app-experience .nemo-tag.is-irrelevant {
+  background: rgba(226, 96, 96, 0.22);
+  color: #f4b4b4;
 }
 
 .nemo-title {

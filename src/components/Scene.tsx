@@ -6,6 +6,7 @@ import type { ViewOptions } from "../types/floorPlan";
 import { BuildingModel, getPlanBounds } from "./FloorPlanModel";
 import { PersistedOrbitControls, usePersistedView } from "./PersistedOrbitControls";
 import { SceneEnvironment } from "./SceneEnvironment";
+import { useAnimatedPlan } from "./useAnimatedPlan";
 import { ViewGizmo } from "./ViewGizmo";
 import type { CameraPose } from "./cameraPose";
 
@@ -15,8 +16,9 @@ interface SceneProps {
 
 export function Scene({ options }: SceneProps) {
   const { floorPlan, select } = useEditor();
-  const bounds = getPlanBounds(floorPlan);
-  const ridge = floorPlan.roof.ridgeHeight;
+  const shown = useAnimatedPlan(floorPlan);
+  const bounds = getPlanBounds(shown);
+  const ridge = shown.roof.ridgeHeight;
   // Towers are taller than they are wide, so height drives the framing.
   const plateSpan = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 20);
   const span = Math.max(plateSpan, ridge * 0.85);
@@ -25,7 +27,7 @@ export function Scene({ options }: SceneProps) {
     [bounds.centerX, bounds.centerZ, ridge],
   );
 
-  if (floorPlan.floors.length === 0) {
+  if (shown.floors.length === 0) {
     return (
       <div className="scene-empty">No floor data in this floor plan.</div>
     );
@@ -63,7 +65,7 @@ export function Scene({ options }: SceneProps) {
       />
       {/* Locked overhead in 2D, so there is no orbit for it to drive. */}
       <ViewGizmo enabled={!options.is2D} />
-      <BuildingModel plan={floorPlan} options={options} />
+      <BuildingModel plan={shown} options={options} />
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[target[0], -0.04, target[2]]}

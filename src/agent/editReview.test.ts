@@ -207,6 +207,38 @@ describe("reviewEdits · walls moved directly", () => {
     expect(notice?.detail).toContain("3 m");
   });
 
+  it("holds a 900 m storey and does not let it reach the model", () => {
+    const l3 = mockFloorPlan.floors.find((floor) => floor.id === "l3");
+    expect(l3).toBeTruthy();
+    const notice = reviewEdits(
+      mockFloorPlan,
+      l3!.walls.map((wall) => ({
+        type: "patch_wall" as const,
+        wallId: wall.id,
+        patch: { height: 900 },
+      })),
+    );
+    expect(notice?.severity).toBe("irrelevant");
+    expect(notice?.title).toMatch(/900/);
+    expect(notice?.asked).toHaveLength(l3!.walls.length);
+    // Nothing to clamp to — Accept applies it, Decline leaves the plan.
+    expect(notice?.trimmed).toEqual([]);
+  });
+
+  it("lets a normal ridge raise through, which is a real revision", () => {
+    expect(
+      reviewEdits(mockFloorPlan, [{ type: "patch_roof", patch: { ridgeHeight: 9 } }]),
+    ).toBeNull();
+  });
+
+  it("holds a ridge that has left the building", () => {
+    const notice = reviewEdits(mockFloorPlan, [
+      { type: "patch_roof", patch: { ridgeHeight: 900 } },
+    ]);
+    expect(notice?.severity).toBe("irrelevant");
+    expect(notice?.title).toMatch(/900/);
+  });
+
   it("leaves a wholesale replacement alone, which is a new building not an edit", () => {
     expect(
       reviewEdits(mockFloorPlan, [

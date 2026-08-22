@@ -175,7 +175,9 @@ export function ChatPanel() {
       agent: "edit",
       text:
         choice === "accept"
-          ? "Done — the building has changed shape, so check the storeys above."
+          ? review.severity === "irrelevant"
+            ? "Applied anyway. Nemoclaw logged the override."
+            : "Done — the building has changed shape, so check the storeys above."
           : `Done — kept inside the shell at ${review.fitLabel?.replace(/^(Keep|Use)\s+/, "")}.`,
       actions: applied.length > 0 ? actions.map(describeAction) : undefined,
     });

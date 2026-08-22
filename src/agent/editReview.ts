@@ -4,7 +4,7 @@ import { applyAgentAction } from "./applyAction";
 import type { AgentAction } from "./types";
 
 export interface EditNotice {
-  severity: "grows-footprint" | "overhangs";
+  severity: "grows-footprint" | "overhangs" | "irrelevant";
   title: string;
   detail: string;
   /**
@@ -35,8 +35,15 @@ export function reviewEdits(plan: FloorPlan, actions: AgentAction[]): EditNotice
   if (actions.some((action) => action.type === "replace_plan")) {
     return null;
   }
-  return reviewResizes(plan, actions) ?? reviewShell(plan, actions);
+  return reviewResizes(plan, actions) ?? reviewScale(plan, actions) ?? reviewShell(plan, actions);
 }
+
+/** A single storey taller than this has left the building and become a tower. */
+const MAX_STOREY_M = 12;
+/** Ridge on a mid-rise. A house asking for 80 m+ is not a roof revision. */
+const MAX_RIDGE_M = 80;
+const MAX_ROOM_SIDE_M = 80;
+const MAX_OPENING_M = 15;
 
 /**
  * The precise case: an area was named, so the reply can say what the plate holds
@@ -86,6 +93,116 @@ function reviewResizes(plan: FloorPlan, actions: AgentAction[]): EditNotice | nu
     asked: actions,
     trimmed,
   };
+}
+
+/**
+ * Nemoclaw's second watch: a number that cannot be a building. "L3 to 900 m"
+ * is not a storey revision — it is an irrelevant measurement, and it must not
+ * reach the model until someone accepts it on the card.
+ */
+function reviewScale(plan: FloorPlan, actions: AgentAction[]): EditNotice | null {
+  const after = actions.reduce(applyAgentAction, plan);
+  const storey = tallestStorey(plan, after);
+  if (storey) {
+    return {
+      severity: "irrelevant",
+      title: `${storey.name} at ${trim(storey.next)} m is not a storey`,
+      detail: `A floor plate is a few metres high. ${storey.name}'s walls would go from ${trim(
+        storey.prev,
+      )} m to ${trim(storey.next)} m. That is out of scale for this building, so Nemoclaw held the edit.`,
+      asked: actions,
+      trimmed: [],
+    };
+  }
+
+  if (after.roof.ridgeHeight > MAX_RIDGE_M && after.roof.ridgeHeight - plan.roof.ridgeHeight > 1) {
+    return {
+      severity: "irrelevant",
+      title: `Ridge at ${trim(after.roof.ridgeHeight)} m is not a roof`,
+      detail: `The live ridge is ${trim(plan.roof.ridgeHeight)} m. ${trim(
+        after.roof.ridgeHeight,
+      )} m is a tower, not a revision of this gable.`,
+      asked: actions,
+      trimmed: [],
+    };
+  }
+
+  const room = oversizedRoom(after);
+  if (room) {
+    return {
+      severity: "irrelevant",
+      title: `${room.name} at ${trim(room.span)} m is out of scale`,
+      detail: `${room.name} would be ${trim(room.span)} m across. That is not a room on this plate.`,
+      asked: actions,
+      trimmed: [],
+    };
+  }
+
+  const opening = oversizedOpening(after);
+  if (opening) {
+    return {
+      severity: "irrelevant",
+      title: `An opening at ${trim(opening.size)} m is out of scale`,
+      detail: `${opening.name} would be ${trim(opening.size)} m. Nemoclaw held the edit.`,
+      asked: actions,
+      trimmed: [],
+    };
+  }
+
+  return null;
+}
+
+function tallestStorey(
+  before: FloorPlan,
+  after: FloorPlan,
+): { name: string; prev: number; next: number } | null {
+  let worst: { name: string; prev: number; next: number } | null = null;
+  for (const floor of after.floors) {
+    const prior = before.floors.find((entry) => entry.id === floor.id);
+    const next = maxWallHeight(floor);
+    const prev = prior ? maxWallHeight(prior) : next;
+    if (next > MAX_STOREY_M && next > prev + 0.05) {
+      if (!worst || next > worst.next) {
+        worst = { name: floor.name, prev, next };
+      }
+    }
+  }
+  return worst;
+}
+
+function maxWallHeight(floor: Floor): number {
+  return floor.walls.reduce((tallest, wall) => Math.max(tallest, wall.height), 0);
+}
+
+function oversizedRoom(plan: FloorPlan): { name: string; span: number } | null {
+  let worst: { name: string; span: number } | null = null;
+  for (const floor of plan.floors) {
+    for (const room of floor.rooms) {
+      const xs = room.boundary.map((point) => point.x);
+      const ys = room.boundary.map((point) => point.y);
+      if (xs.length === 0) {
+        continue;
+      }
+      const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      if (span > MAX_ROOM_SIDE_M && (!worst || span > worst.span)) {
+        worst = { name: room.name, span };
+      }
+    }
+  }
+  return worst;
+}
+
+function oversizedOpening(plan: FloorPlan): { name: string; size: number } | null {
+  let worst: { name: string; size: number } | null = null;
+  for (const floor of plan.floors) {
+    for (const opening of floor.openings) {
+      const size = Math.max(opening.width, opening.height);
+      if (size > MAX_OPENING_M && (!worst || size > worst.size)) {
+        worst = { name: opening.id, size };
+      }
+    }
+  }
+  return worst;
 }
 
 /**

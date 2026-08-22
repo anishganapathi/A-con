@@ -36,7 +36,11 @@ export function NemoclawNotice({
           Supercharged by <strong>Nemoclaw</strong>
         </span>
         <span className={`nemo-tag is-${notice.severity}`}>
-          {notice.severity === "overhangs" ? "Overflow" : "Footprint"}
+          {notice.severity === "overhangs"
+            ? "Overflow"
+            : notice.severity === "irrelevant"
+              ? "Irrelevant"
+              : "Footprint"}
         </span>
       </header>
       <p className="nemo-title">{notice.title}</p>
@@ -67,25 +71,18 @@ export function NemoclawNotice({
 }
 
 /**
- * Three talons. Drawn inline in currentColor so it stays legible when the panel
- * goes dark; public/nemoclaw.svg is the same mark as a standalone file.
+ * The Nemoclaw mark, served from public/nemoclaw.svg so the same file is the
+ * source of truth for the card, favicons, and any other consumer. A CSS mask
+ * paints the SVG shape with currentColor, so it still tints correctly on the
+ * dark experience-mode panel — an <img> tag would render the strokes black.
  */
 export function NemoclawMark({ size = 15 }: { size?: number }) {
   return (
-    <svg
+    <span
       className="nemo-mark"
-      viewBox="0 0 24 24"
-      width={size}
-      height={size}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.1"
-      strokeLinecap="round"
-      aria-hidden
-    >
-      <path d="M3.6 5.2C7 8.2 10 12.6 11.4 18.6" />
-      <path d="M8.8 3.8C12.2 6.8 15.2 11.2 16.6 17.2" />
-      <path d="M14 5.2C17.1 7.9 19.4 11.8 20.6 17" />
-    </svg>
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label="Nemoclaw"
+    />
   );
 }

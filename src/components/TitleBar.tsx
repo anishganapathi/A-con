@@ -4,6 +4,13 @@ const TITLE_BAR_LOGO = "/logo.png";
 export function TitleBar() {
   return (
     <header className="title-bar">
+      <img
+        alt="Dell"
+        className="title-bar-sponsor dell"
+        decoding="async"
+        draggable={false}
+        src="/dell.svg"
+      />
       <div className="title-bar-brand">
         <img
           alt=""
@@ -14,6 +21,13 @@ export function TitleBar() {
         />
         <span className="title-bar-name">{TITLE}</span>
       </div>
+      <img
+        alt="NVIDIA"
+        className="title-bar-sponsor nvidia"
+        decoding="async"
+        draggable={false}
+        src="/nvidia.svg"
+      />
       <button type="button" className="title-bar-help" aria-label="Help">
         <HelpIcon />
       </button>
