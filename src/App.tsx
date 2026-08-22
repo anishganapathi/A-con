@@ -2,6 +2,7 @@ import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useState } from "react";
 import { ChatPanel } from "./components/ChatPanel";
 import { ConstructionHud } from "./components/ConstructionHud";
+import { DrawingCompare } from "./components/DrawingCompare";
 import { ExperienceScene } from "./components/ExperienceScene";
 import { LeftRail } from "./components/LeftRail";
 import { ModeSwitch } from "./components/ModeSwitch";
@@ -94,6 +95,7 @@ function AppShell({
                 <>
                   <Scene options={options} />
                   <LeftRail options={options} onChange={onOptionsChange} />
+                  <DrawingCompare />
                   <div className="sheet-block">
                     <span className="sheet-no">{floorPlan.source.sheet}</span>
                     <strong>{floorPlan.source.title}</strong>

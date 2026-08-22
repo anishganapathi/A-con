@@ -1795,3 +1795,210 @@ textarea {
 .app-experience .construction-bar span {
   background: #7ee0d6;
 }
+
+/* Comparing the built model against the sheet it came from. Both the launcher
+   and the panel hang directly under the orbit gizmo, which occupies the corner
+   from about 44px to 160px down and stops 384px short of the right edge. */
+.compare-launcher {
+  position: absolute;
+  top: 172px;
+  right: 384px;
+  z-index: 24;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  transition: color 0.2s ease;
+}
+
+.compare-launcher:hover {
+  color: var(--ink);
+}
+
+.compare-launcher:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.compare-panel {
+  position: absolute;
+  top: 172px;
+  right: 384px;
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  max-height: calc(100% - 210px);
+  padding: 14px;
+  border: 0;
+  border-radius: var(--glass-radius);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+.compare-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compare-head h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  /* File names run long and must not push the close button off the panel. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.compare-close {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.compare-close:hover {
+  background: var(--glass-control);
+  color: var(--ink);
+}
+
+.compare-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.compare-mode {
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.compare-mode:hover {
+  background: var(--glass-control);
+  color: var(--ink);
+}
+
+.compare-mode.is-on {
+  background: var(--accent-soft);
+  border-color: rgba(63, 92, 79, 0.18);
+  color: var(--ink);
+}
+
+.compare-sheet {
+  margin: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: var(--glass-edge-soft);
+}
+
+.compare-sheet img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+}
+
+.compare-fade {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.compare-fade input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.compare-hint {
+  font-weight: 500;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.compare-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.compare-thumb {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.compare-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.compare-thumb.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* The sheet ghosted over the model. Never takes the pointer, so the building
+   underneath can still be orbited into alignment. */
+.compare-ghost {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.compare-ghost img {
+  max-width: min(70%, 760px);
+  max-height: 82%;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+}

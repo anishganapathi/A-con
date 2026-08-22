@@ -17,6 +17,7 @@ import { useConstruction } from "../editor/ConstructionContext";
 import { useEditor } from "../editor/EditorContext";
 import { SWEEP } from "./motionTokens";
 import { CollapseButton, PanelLauncher } from "./PanelCollapse";
+import { rememberDrawings } from "./referenceDrawings";
 
 interface PendingBuild {
   spec: BuildingSpec;
@@ -44,9 +45,11 @@ export function ChatPanel() {
   );
   const question = pending ? questions[pending.index] : undefined;
   const apiReady =
-    settings.provider === "ollama"
-      ? Boolean(status?.ollama.up)
-      : Boolean(settings.apiKey) || providerHasServerKey(status, settings.provider);
+    settings.provider === "local"
+      ? Boolean(status?.local?.up || status?.env.local)
+      : settings.provider === "ollama"
+        ? Boolean(status?.ollama.up)
+        : Boolean(settings.apiKey) || providerHasServerKey(status, settings.provider);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,16 +188,15 @@ export function ChatPanel() {
     if ((!trimmed && files.length === 0) || busy) {
       return;
     }
-    const attachments: ChatAttachment[] = files.map((file) => ({
-      name: file.name,
-      type: file.type,
-      size: file.size,
-    }));
+    const attachments = await readChatAttachments(files);
+    // Held before the base64 is stripped below, so the sheet can be compared
+    // against whatever the model builds from it.
+    rememberDrawings(attachments);
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
-      text: trimmed || `Extract ${attachments.length} drawing(s)`,
-      attachments,
+      text: trimmed || `Read ${attachments.length} drawing${attachments.length === 1 ? "" : "s"}`,
+      attachments: attachments.map(({ dataUrl: _data, ...file }) => file),
     };
     setMessages((current) => [...current, userMessage]);
     setDraft("");
@@ -283,7 +285,9 @@ export function ChatPanel() {
               {locked
                 ? "Locked · edits only"
                 : apiReady
-                  ? "Live"
+                  ? settings.provider === "local"
+                    ? "Local VL · GB10"
+                    : "Live"
                   : "Local rules · no model configured"}
             </p>
           </header>
@@ -401,7 +405,9 @@ export function ChatPanel() {
               value={draft}
               rows={3}
               placeholder={
-                locked ? "Edit the current model…" : "Build, edit, or extract…"
+                locked
+                  ? "Attach an elevation or describe an edit…"
+                  : "Build, edit, or extract…"
               }
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
@@ -497,6 +503,31 @@ function ArrowUpIcon() {
       <path d="m5 12 7-7 7 7" />
     </svg>
   );
+}
+
+async function readChatAttachments(files: File[]): Promise<ChatAttachment[]> {
+  return Promise.all(
+    files.map(async (file) => {
+      const attachment: ChatAttachment = {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      };
+      if (file.type.startsWith("image/")) {
+        attachment.dataUrl = await fileToDataUrl(file);
+      }
+      return attachment;
+    }),
+  );
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 function defaultModelSettingsSafe(): ModelSettings {

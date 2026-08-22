@@ -18,9 +18,15 @@ interface BuildingModelProps {
 
 export function BuildingModel({ plan, options }: BuildingModelProps) {
   const construction = useConstruction();
+  // A rebuild can leave the selection pointing at a storey the new plan does
+  // not have; falling back to the ground floor keeps the scene from going dark.
+  const activeId =
+    plan.floors.find((floor) => floor.id === options.floorId)?.id ??
+    plan.floors[0]?.id ??
+    options.floorId;
   const floors = options.showAllFloors
     ? plan.floors
-    : plan.floors.filter((floor) => floor.id === options.floorId);
+    : plan.floors.filter((floor) => floor.id === activeId);
   const bounds = getPlanBounds(plan);
   const lastFloor = plan.floors[plan.floors.length - 1];
   // Setback towers taper, so the roof caps the top plate rather than the base.
@@ -29,7 +35,7 @@ export function BuildingModel({ plan, options }: BuildingModelProps) {
     plan.roof.visible !== false &&
     construction.showRoof &&
     options.showRoof &&
-    (options.showAllFloors || options.floorId === lastFloor?.id);
+    (options.showAllFloors || activeId === lastFloor?.id);
 
   return (
     <group>
@@ -43,8 +49,7 @@ export function BuildingModel({ plan, options }: BuildingModelProps) {
             // nodes, so tall stacks only annotate the floor in focus.
             showRoomLabels:
               options.showRoomLabels &&
-              (plan.floors.length <= LABELLED_FLOOR_MAX ||
-                floor.id === options.floorId),
+              (plan.floors.length <= LABELLED_FLOOR_MAX || floor.id === activeId),
           }}
           showPlanDimensions={
             floor.elevation === 0 &&

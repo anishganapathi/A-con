@@ -6,6 +6,7 @@ import type { ViewOptions } from "../types/floorPlan";
 import { BuildingModel, getPlanBounds } from "./FloorPlanModel";
 import { PersistedOrbitControls, usePersistedView } from "./PersistedOrbitControls";
 import { SceneEnvironment } from "./SceneEnvironment";
+import { ViewGizmo } from "./ViewGizmo";
 import type { CameraPose } from "./cameraPose";
 
 interface SceneProps {
@@ -60,6 +61,8 @@ export function Scene({ options }: SceneProps) {
         minDistance={4}
         maxDistance={Math.max(400, span * 12)}
       />
+      {/* Locked overhead in 2D, so there is no orbit for it to drive. */}
+      <ViewGizmo enabled={!options.is2D} />
       <BuildingModel plan={floorPlan} options={options} />
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}

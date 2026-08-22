@@ -15,6 +15,12 @@ export function ViewControls({
   const patch = (partial: Partial<ViewOptions>) => {
     onChange({ ...options, ...partial });
   };
+  // Matches the model's fallback so the dropdown never shows a storey that a
+  // rebuild removed.
+  const activeId =
+    floorPlan.floors.find((floor) => floor.id === options.floorId)?.id ??
+    floorPlan.floors[0]?.id ??
+    "";
 
   const floor = options.showAllFloors
     ? "All floors"
@@ -33,7 +39,7 @@ export function ViewControls({
       <label className="view-field">
         <span>Floor</span>
         <select
-          value={options.showAllFloors ? "__all__" : options.floorId}
+          value={options.showAllFloors ? "__all__" : activeId}
           onChange={(event) => {
             const value = event.target.value;
             if (value === "__all__") {
