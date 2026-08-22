@@ -14,22 +14,39 @@
     "SF Pro", system-ui, "Segoe UI Variable", "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
-  /* Liquid glass. The saturate() is what separates this from a plain blur:
-     it pulls colour out of the scene behind the panel the way Apple's
-     materials do. Highlights are inset shadows rather than pseudo-elements so
-     they stay put inside the panels that scroll. */
-  --glass-blur: saturate(180%) blur(24px);
-  --glass-blur-control: saturate(160%) blur(12px);
+  /* Liquid glass. Three things separate this from a plain frosted blur:
+     saturate()+brightness() so the material takes colour from the scene behind
+     it, a rim that is lit unevenly so light appears to bend around the edge,
+     and a specular highlight that tracks the pointer (--gx/--gy). */
+  /* Thinner tints below mean more of the model shows through, so the blur is
+     pushed harder to keep text off the geometry behind it. */
+  --glass-blur: saturate(200%) brightness(1.08) blur(34px);
+  --glass-blur-control: saturate(175%) brightness(1.05) blur(18px);
+  /* Pointer position within the surface, in %. Centre until JS reports a move. */
+  --gx: 50%;
+  --gy: 0%;
+  --glass-specular: rgba(255, 255, 255, 0.55);
+  /* The lit rim. Bright where light enters (top-left), bright again where it
+     exits (bottom-right), dim on the other two edges. */
+  --glass-rim: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(255, 255, 255, 0.28) 26%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.32) 74%,
+    rgba(255, 255, 255, 0.85) 100%
+  );
+  --glass-rim-width: 1px;
   --glass-surface: linear-gradient(
     158deg,
-    rgba(255, 255, 255, 0.74) 0%,
-    rgba(255, 255, 255, 0.52) 46%,
-    rgba(246, 246, 250, 0.46) 100%
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.3) 46%,
+    rgba(246, 246, 250, 0.24) 100%
   );
   --glass-control: linear-gradient(
     160deg,
-    rgba(255, 255, 255, 0.66),
-    rgba(255, 255, 255, 0.38)
+    rgba(255, 255, 255, 0.4),
+    rgba(255, 255, 255, 0.18)
   );
   --glass-border: rgba(255, 255, 255, 0.58);
   --glass-radius: 18px;
@@ -44,20 +61,29 @@
 .app-experience {
   --glass-surface: linear-gradient(
     158deg,
-    rgba(22, 40, 44, 0.68) 0%,
-    rgba(10, 20, 25, 0.56) 52%,
-    rgba(6, 12, 16, 0.52) 100%
+    rgba(22, 40, 44, 0.44) 0%,
+    rgba(10, 20, 25, 0.32) 52%,
+    rgba(6, 12, 16, 0.28) 100%
   );
   --glass-control: linear-gradient(
     160deg,
-    rgba(126, 224, 214, 0.14),
-    rgba(6, 14, 18, 0.42)
+    rgba(126, 224, 214, 0.1),
+    rgba(6, 14, 18, 0.22)
   );
   --glass-border: rgba(126, 224, 214, 0.26);
   --glass-shadow: 0 2px 6px rgba(0, 0, 0, 0.32), 0 18px 44px rgba(0, 0, 0, 0.46);
   --glass-edge: inset 0 1px 0 rgba(190, 255, 248, 0.16),
     inset 0 -1px 0 rgba(0, 0, 0, 0.28);
   --glass-edge-soft: inset 0 1px 0 rgba(190, 255, 248, 0.12);
+  --glass-specular: rgba(160, 255, 244, 0.3);
+  --glass-rim: linear-gradient(
+    145deg,
+    rgba(190, 255, 248, 0.7) 0%,
+    rgba(126, 224, 214, 0.16) 26%,
+    rgba(126, 224, 214, 0.06) 50%,
+    rgba(126, 224, 214, 0.2) 74%,
+    rgba(190, 255, 248, 0.6) 100%
+  );
 }
 
 .left-rail,
@@ -65,7 +91,10 @@
 .sheet-block,
 .mode-switch,
 .construction-hud {
-  border: 1px solid var(--glass-border);
+  position: relative;
+  /* No border: the rim below draws it, so light can vary around the edge in a
+     way a single border-color cannot. */
+  border: 0;
   border-radius: var(--glass-radius);
   background: var(--glass-surface);
   box-shadow: var(--glass-shadow), var(--glass-edge);
@@ -73,8 +102,113 @@
   backdrop-filter: var(--glass-blur);
 }
 
+/* The refracted rim. A gradient fills the box, then a mask punches out
+   everything but a 1px band, leaving a border whose brightness travels around
+   the edge. mask-composite is what makes the ring rather than a filled box. */
+.left-rail::before,
+.chat-panel::before,
+.sheet-block::before,
+.mode-switch::before,
+.construction-hud::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  padding: var(--glass-rim-width);
+  background: var(--glass-rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* The specular highlight: a soft bloom that follows the pointer, plus a fixed
+   gloss along the top so the surface still reads as glass at rest. */
+.left-rail::after,
+.chat-panel::after,
+.sheet-block::after,
+.construction-hud::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      120px circle at var(--gx) var(--gy),
+      var(--glass-specular),
+      transparent 70%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 32%);
+  opacity: 0.9;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+/* Panel content has to sit above both decoration layers. */
+.left-rail > *,
+.chat-panel > *,
+.sheet-block > *,
+.mode-switch > *,
+.construction-hud > * {
+  position: relative;
+  z-index: 1;
+}
+
 .mode-switch {
   border-radius: 999px;
+}
+
+/* Prominent controls get the same rim so they read as pieces of the same
+   material, not flat chips sitting on top of it. */
+.chat-form,
+.chat-send,
+.chat-attach,
+.btn-ghost,
+.btn-danger {
+  position: relative;
+  isolation: isolate;
+}
+
+.chat-form::before,
+.chat-send::before,
+.chat-attach::before,
+.btn-ghost::before,
+.btn-danger::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: var(--glass-rim-width);
+  background: var(--glass-rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Liquid glass swells toward a press rather than just changing colour. */
+.chat-send,
+.chat-attach,
+.btn-ghost,
+.btn-danger,
+.toggle,
+.mode-tab {
+  transition: transform 0.24s cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 0.24s ease, background 0.24s ease, color 0.18s ease;
+}
+
+.chat-send:active:not(:disabled),
+.chat-attach:active,
+.btn-ghost:active:not(:disabled),
+.btn-danger:active,
+.toggle:active,
+.mode-tab:active {
+  transform: scale(0.97);
 }
 
 /* View controls and the inspector share one pane of glass: the rail draws the
@@ -113,6 +247,78 @@
   .app-experience .mode-switch,
   .app-experience .construction-hud {
     background: #0b1418;
+  }
+}
+
+/* Without mask-composite the rim would paint as a filled box over the panel, so
+   it reverts to an ordinary hairline border. */
+@supports not ((mask-composite: exclude) or (-webkit-mask-composite: xor)) {
+  .left-rail::before,
+  .chat-panel::before,
+  .sheet-block::before,
+  .mode-switch::before,
+  .construction-hud::before,
+  .chat-form::before,
+  .chat-send::before,
+  .chat-attach::before,
+  .btn-ghost::before,
+  .btn-danger::before {
+    background: none;
+    border: 1px solid var(--glass-border);
+  }
+}
+
+/* Some people find translucency over moving 3D content hard to read. */
+@media (prefers-reduced-transparency: reduce) {
+  .left-rail,
+  .chat-panel,
+  .sheet-block,
+  .mode-switch,
+  .construction-hud {
+    background: var(--panel-bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .app-experience .chat-panel,
+  .app-experience .mode-switch,
+  .app-experience .construction-hud {
+    background: #0b1418;
+  }
+
+  .left-rail::after,
+  .chat-panel::after,
+  .sheet-block::after,
+  .construction-hud::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .left-rail::after,
+  .chat-panel::after,
+  .sheet-block::after,
+  .construction-hud::after {
+    /* Highlight stays put; the pointer tracking is disabled in JS to match. */
+    transition: none;
+  }
+
+  .chat-send,
+  .chat-attach,
+  .btn-ghost,
+  .btn-danger,
+  .toggle,
+  .mode-tab {
+    transition: none;
+  }
+
+  .chat-send:active:not(:disabled),
+  .chat-attach:active,
+  .btn-ghost:active:not(:disabled),
+  .btn-danger:active,
+  .toggle:active,
+  .mode-tab:active {
+    transform: none;
   }
 }
 
@@ -545,18 +751,20 @@ textarea {
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  border: 1px solid var(--glass-border);
+  border: 0;
   border-radius: 16px;
   background: var(--glass-control);
   box-shadow: var(--glass-edge-soft);
+  -webkit-backdrop-filter: var(--glass-blur-control);
+  backdrop-filter: var(--glass-blur-control);
 }
 
 .chat-form:focus-within {
-  border-color: rgba(63, 92, 79, 0.4);
+  box-shadow: var(--glass-edge-soft), 0 0 0 2px rgba(63, 92, 79, 0.28);
 }
 
 .app-experience .chat-form:focus-within {
-  border-color: rgba(126, 224, 214, 0.45);
+  box-shadow: var(--glass-edge-soft), 0 0 0 2px rgba(126, 224, 214, 0.32);
 }
 
 .chat-form textarea {
@@ -596,14 +804,13 @@ textarea {
   align-items: center;
   gap: 6px;
   padding: 6px 12px 6px 10px;
-  border: 1px solid var(--glass-border);
+  border: 0;
   border-radius: 999px;
   background: var(--glass-control);
   box-shadow: var(--glass-edge-soft);
   color: var(--muted);
   font-size: 11px;
   cursor: pointer;
-  transition: color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .chat-attach:hover {
@@ -628,13 +835,12 @@ textarea {
   width: 34px;
   height: 34px;
   padding: 0;
-  border: 1px solid rgba(63, 92, 79, 0.4);
+  border: 0;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 2px 8px rgba(28, 32, 38, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.24);
   color: #f6f8f6;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
 }
 
 .chat-send:hover:not(:disabled) {
@@ -652,7 +858,6 @@ textarea {
 }
 
 .app-experience .chat-send {
-  border-color: rgba(126, 224, 214, 0.5);
   background: #7ee0d6;
   color: #06201d;
 }
@@ -737,12 +942,12 @@ textarea {
 .btn-danger,
 .btn-ghost {
   padding: 8px 10px;
+  border: 0;
   border-radius: 10px;
   box-shadow: var(--glass-edge-soft);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .btn-danger:hover:not(:disabled),
@@ -757,13 +962,11 @@ textarea {
 }
 
 .btn-danger {
-  border: 1px solid rgba(148, 54, 42, 0.28);
   background: linear-gradient(160deg, rgba(250, 232, 229, 0.86), rgba(240, 210, 204, 0.62));
   color: #7a2e24;
 }
 
 .btn-ghost {
-  border: 1px solid var(--glass-border);
   background: var(--glass-control);
   color: var(--ink);
 }

@@ -6,6 +6,7 @@ import { Inspector } from "./components/Inspector";
 import { ModeSwitch } from "./components/ModeSwitch";
 import { Scene } from "./components/Scene";
 import { ViewControls } from "./components/ViewControls";
+import { useLiquidGlass } from "./components/useLiquidGlass";
 import { ConstructionProvider } from "./editor/ConstructionContext";
 import { EditorProvider, useEditor } from "./editor/EditorContext";
 import type { AppMode, ViewOptions } from "./types/floorPlan";
@@ -48,6 +49,7 @@ function AppShell({
 }) {
   const { floorPlan } = useEditor();
   const experience = options.appMode === "experience";
+  useLiquidGlass();
 
   const setMode = (appMode: AppMode) => {
     onOptionsChange({ ...options, appMode });
