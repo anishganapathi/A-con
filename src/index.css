@@ -5,8 +5,14 @@
   --muted: #6b645c;
   --accent: #3f5c4f;
   --accent-soft: #e7eee9;
-  --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* San Francisco. Apple does not license SF for web hosting, so it is reached
+     through the system font: -apple-system gets SF Pro in Safari, and
+     BlinkMacSystemFont does the same in Chrome. The named SF Pro faces cover
+     non-Apple machines where the designer installed it, then generic fallbacks.
+     Apple picks the SF Text/Display optical size by point size on its own. */
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "SF Pro", system-ui, "Segoe UI Variable", "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
   /* Liquid glass. The saturate() is what separates this from a plain blur:
      it pulls colour out of the scene behind the panel the way Apple's
@@ -124,6 +130,19 @@ body,
   background: #dfe6ee;
   font-family: var(--sans);
   color: var(--ink);
+  /* SF is designed for this; without it macOS renders the UI noticeably heavier. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+}
+
+/* Form controls do not inherit font-family from the UA stylesheet, so they
+   would fall back to the browser default instead of SF. */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 .app {

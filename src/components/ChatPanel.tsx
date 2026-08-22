@@ -132,9 +132,7 @@ export function ChatPanel() {
         <p className="view-kicker">Agent</p>
         <h1>Construction chat</h1>
         <p className={`chat-status ${apiReady ? "is-live" : ""}`}>
-          {apiReady
-            ? `Live · ${PROVIDER_DEFAULTS[settings.provider].label}`
-            : "Local rules · add an API key to test a model"}
+          {apiReady ? "Live" : "Local rules · no model configured"}
         </p>
       </header>
 
