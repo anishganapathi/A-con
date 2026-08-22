@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Grid, OrbitControls, PerspectiveCamera, Stars } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
@@ -6,21 +6,20 @@ import {
   EffectComposer,
   Vignette,
 } from "@react-three/postprocessing";
-import type { Group } from "three";
+import type { DirectionalLight, Group } from "three";
 import { useEditor } from "../editor/EditorContext";
 import { ExperienceBuilding } from "./ExperienceBuilding";
-import { getPlanBounds } from "./FloorPlanModel";
+import {
+  createDriftPositions,
+  getExperienceFraming,
+  getExperienceShadowRig,
+  type ExperienceFraming,
+} from "./experienceFraming";
 
 export function ExperienceScene() {
   const { floorPlan } = useEditor();
-  const bounds = getPlanBounds(floorPlan);
-  const plateSpan = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 20);
-  const span = Math.max(plateSpan, floorPlan.roof.ridgeHeight * 0.85);
-  const target: [number, number, number] = [
-    bounds.centerX,
-    floorPlan.roof.ridgeHeight * 0.42,
-    bounds.centerZ,
-  ];
+  const framing = useMemo(() => getExperienceFraming(floorPlan), [floorPlan]);
+  const { span, target } = framing;
 
   return (
     <Canvas
@@ -30,13 +29,14 @@ export function ExperienceScene() {
       className="scene-canvas experience-canvas"
     >
       <color attach="background" args={["#05080c"]} />
-      <fog attach="fog" args={["#071018", span * 6, span * 18]} />
+      <fog attach="fog" args={["#071018", framing.fogNear, framing.fogFar]} />
       <PerspectiveCamera
+        key={`persp-${Math.round(span)}`}
         makeDefault
-        position={[target[0] + span * 0.45, Math.max(14, span * 0.28), target[2] + span * 0.5]}
+        position={framing.cameraPosition}
         fov={36}
         near={0.1}
-        far={Math.max(2000, span * 40)}
+        far={framing.cameraFar}
       />
       <OrbitControls
         makeDefault
@@ -45,12 +45,22 @@ export function ExperienceScene() {
         dampingFactor={0.06}
         autoRotate
         autoRotateSpeed={0.35}
-        minDistance={10}
-        maxDistance={Math.max(400, span * 12)}
+        minDistance={framing.minDistance}
+        maxDistance={framing.maxDistance}
         maxPolarAngle={Math.PI / 2.08}
       />
-      <ExperienceLights />
-      <Stars radius={90} depth={40} count={1800} factor={2.6} saturation={0} fade speed={0.4} />
+      <ExperienceLights framing={framing} />
+      <group position={[target[0], 0, target[2]]}>
+        <Stars
+          radius={framing.starRadius}
+          depth={framing.starDepth}
+          count={1800}
+          factor={2.6}
+          saturation={0}
+          fade
+          speed={0.4}
+        />
+      </group>
       <Grid
         position={[target[0], -0.02, target[2]]}
         args={[span * 2.4, span * 2.4]}
@@ -69,11 +79,11 @@ export function ExperienceScene() {
         position={[target[0], -0.04, target[2]]}
         receiveShadow
       >
-        <planeGeometry args={[Math.max(400, span * 16), Math.max(400, span * 16)]} />
+        <planeGeometry args={[framing.groundSize, framing.groundSize]} />
         <meshStandardMaterial color="#070c10" roughness={1} metalness={0.1} />
       </mesh>
       <ExperienceBuilding plan={floorPlan} />
-      <DriftField />
+      <DriftField framing={framing} />
       <EffectComposer>
         <Bloom
           intensity={0.85}
@@ -87,43 +97,60 @@ export function ExperienceScene() {
   );
 }
 
-function ExperienceLights() {
+function ExperienceLights({ framing }: { framing: ExperienceFraming }) {
+  const rig = useMemo(() => getExperienceShadowRig(framing), [framing]);
+  const sun = useRef<DirectionalLight>(null);
+  const { span, target } = framing;
+
+  useEffect(() => {
+    if (!sun.current) {
+      return;
+    }
+    // The shadow frustum is built around light.target, which lives outside the
+    // scene graph and so has to be positioned and flushed by hand.
+    sun.current.target.position.set(...rig.lookAt);
+    sun.current.target.updateMatrixWorld();
+  }, [rig.lookAt]);
+
   return (
     <>
       <ambientLight intensity={0.18} />
       <hemisphereLight args={["#7ee0d6", "#0a0e12", 0.28]} />
       <directionalLight
+        ref={sun}
         castShadow
-        position={[18, 24, 8]}
+        position={rig.position}
         intensity={1.1}
         color="#cfe8e4"
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-near={2}
-        shadow-camera-far={70}
-        shadow-camera-left={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
-        shadow-camera-bottom={-20}
+        shadow-camera-near={rig.near}
+        shadow-camera-far={rig.far}
+        shadow-camera-left={rig.left}
+        shadow-camera-right={rig.right}
+        shadow-camera-top={rig.top}
+        shadow-camera-bottom={rig.bottom}
+        shadow-bias={-0.00025}
       />
-      <pointLight position={[6, 8, 4]} intensity={12} color="#5eead4" distance={28} />
-      <pointLight position={[2, 3, 10]} intensity={6} color="#7aa2ff" distance={22} />
+      <pointLight
+        position={[target[0] + span * 0.3, span * 0.4, target[2] + span * 0.2]}
+        intensity={12}
+        color="#5eead4"
+        distance={span * 1.4}
+      />
+      <pointLight
+        position={[target[0] + span * 0.1, span * 0.15, target[2] + span * 0.5]}
+        intensity={6}
+        color="#7aa2ff"
+        distance={span * 1.1}
+      />
     </>
   );
 }
 
-function DriftField() {
+function DriftField({ framing }: { framing: ExperienceFraming }) {
   const group = useRef<Group>(null);
-  const positions = useMemo(() => {
-    const count = 90;
-    const data = new Float32Array(count * 3);
-    for (let i = 0; i < count; i += 1) {
-      data[i * 3] = (Math.random() - 0.5) * 40;
-      data[i * 3 + 1] = Math.random() * 16;
-      data[i * 3 + 2] = (Math.random() - 0.5) * 40;
-    }
-    return data;
-  }, []);
+  const positions = useMemo(() => createDriftPositions(framing), [framing]);
 
   useFrame((_, delta) => {
     if (!group.current) {
@@ -133,14 +160,14 @@ function DriftField() {
   });
 
   return (
-    <group ref={group}>
+    <group ref={group} position={framing.driftOrigin}>
       <points>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[positions, 3]} />
         </bufferGeometry>
         <pointsMaterial
           color="#7ee0d6"
-          size={0.06}
+          size={Math.max(0.06, framing.span * 0.003)}
           sizeAttenuation
           transparent
           opacity={0.55}
