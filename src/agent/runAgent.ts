@@ -109,18 +109,12 @@ function runLocal(
 ): AgentTurn {
   if (agent === "construct") {
     const spec = inferSpecFromPrompt(text);
-    const next = compileSpec(spec);
     return {
       agent,
       planner: "local",
-      reply: `Constructed ${next.name}: ${spec.width} × ${spec.depth} m ${spec.typology} with ${spec.zones.length} zones. Gemini was not used for this turn.`,
-      actions: [
-        {
-          type: "replace_plan",
-          plan: next,
-          note: `Built ${spec.width}×${spec.depth} m ${spec.typology}`,
-        },
-      ],
+      reply: `Drafted a ${spec.typology} from local rules. Choose the size and glazing and I'll build it.`,
+      actions: [],
+      draftSpec: spec,
     };
   }
 

@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { BuildingSpec } from "../agent/buildingSpec";
+import { compileSpec } from "../agent/compileSpec";
 import type { AgentStatus, ModelSettings } from "../agent/modelSettings";
 import {
   PROVIDER_DEFAULTS,
@@ -7,9 +9,16 @@ import {
   providerHasServerKey,
 } from "../agent/modelSettings";
 import { actionLabels, runConstructionAgent } from "../agent/runAgent";
+import type { SpecOption } from "../agent/specOptions";
+import { applySpecChoice, buildSpecQuestions } from "../agent/specOptions";
 import type { ChatAttachment, ChatMessage } from "../agent/types";
 import { useConstruction } from "../editor/ConstructionContext";
 import { useEditor } from "../editor/EditorContext";
+
+interface PendingBuild {
+  spec: BuildingSpec;
+  index: number;
+}
 
 export function ChatPanel() {
   const { floorPlan, applyAgentActions } = useEditor();
@@ -20,7 +29,14 @@ export function ChatPanel() {
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<PendingBuild | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const messageSeq = useRef(0);
+  const questions = useMemo(
+    () => (pending ? buildSpecQuestions(pending.spec) : []),
+    [pending],
+  );
+  const question = pending ? questions[pending.index] : undefined;
   const apiReady =
     settings.provider === "ollama"
       ? Boolean(status?.ollama.up)
@@ -59,6 +75,73 @@ export function ChatPanel() {
     };
   }, []);
 
+  const nextId = (prefix: string) => {
+    messageSeq.current += 1;
+    return `${prefix}-${messageSeq.current}`;
+  };
+
+  const scrollToEnd = () => {
+    requestAnimationFrame(() => {
+      listRef.current?.scrollTo({
+        top: listRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  };
+
+  const say = (message: Omit<ChatMessage, "id">) => {
+    setMessages((current) => [...current, { ...message, id: nextId(message.role) }]);
+    scrollToEnd();
+  };
+
+  const commitBuild = (spec: BuildingSpec) => {
+    const plan = compileSpec(spec);
+    const applied = applyAgentActions([
+      {
+        type: "replace_plan",
+        plan,
+        note: `Built ${spec.width}×${spec.depth} m ${spec.typology}`,
+      },
+    ]);
+    if (applied.length > 0) {
+      startPlayback(12000);
+    }
+    setPending(null);
+    say({
+      role: "assistant",
+      agent: "construct",
+      text: `Building ${plan.name} — ${spec.width} × ${spec.depth} m, ${spec.stories} ${spec.stories === 1 ? "storey" : "storeys"}, ${round(spec.stories * spec.storyHeight)} m tall.`,
+    });
+  };
+
+  const choose = (option: SpecOption) => {
+    if (!pending) {
+      return;
+    }
+    const spec = applySpecChoice(pending.spec, option.patch);
+    say({ role: "user", text: option.label });
+    if (pending.index + 1 >= questions.length) {
+      commitBuild(spec);
+      return;
+    }
+    setPending({ spec, index: pending.index + 1 });
+    scrollToEnd();
+  };
+
+  /** Accepts the model's proposal for this question and every one after it. */
+  const acceptSuggested = () => {
+    if (!pending) {
+      return;
+    }
+    let spec = pending.spec;
+    for (const remaining of questions.slice(pending.index)) {
+      const suggested =
+        remaining.options.find((option) => option.recommended) ?? remaining.options[1];
+      spec = applySpecChoice(spec, suggested.patch);
+    }
+    commitBuild(spec);
+  };
+
   const send = async (text: string) => {
     const trimmed = text.trim();
     if ((!trimmed && files.length === 0) || busy) {
@@ -79,6 +162,8 @@ export function ChatPanel() {
     setDraft("");
     setFiles([]);
     setBusy(true);
+    // A new prompt supersedes any half-answered proposal.
+    setPending(null);
     try {
       const turn = await runConstructionAgent({
         text: userMessage.text,
@@ -91,38 +176,33 @@ export function ChatPanel() {
       if (turn.actions.some((action) => action.type === "replace_plan")) {
         startPlayback(12000);
       }
-      setMessages((current) => [
-        ...current,
-        {
-          id: `asst-${Date.now()}`,
-          role: "assistant",
-          agent: turn.agent,
-          planner: turn.planner,
-          model: turn.model,
-          text: turn.reply,
-          actions: applied.length > 0 ? actionLabels(turn) : undefined,
-        },
-      ]);
+      say({
+        role: "assistant",
+        agent: turn.agent,
+        planner: turn.planner,
+        model: turn.model,
+        text: turn.reply,
+        actions: applied.length > 0 ? actionLabels(turn) : undefined,
+      });
+      if (turn.draftSpec) {
+        // A surveyed building has no questions to ask, so it goes up as-is.
+        if (buildSpecQuestions(turn.draftSpec).length === 0) {
+          commitBuild(turn.draftSpec);
+        } else {
+          setPending({ spec: turn.draftSpec, index: 0 });
+        }
+      }
     } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
-          id: `err-${Date.now()}`,
-          role: "assistant",
-          text:
-            error instanceof Error
-              ? error.message
-              : "The agent API could not complete that turn.",
-        },
-      ]);
+      say({
+        role: "assistant",
+        text:
+          error instanceof Error
+            ? error.message
+            : "The agent API could not complete that turn.",
+      });
     } finally {
       setBusy(false);
-      requestAnimationFrame(() => {
-        listRef.current?.scrollTo({
-          top: listRef.current.scrollHeight,
-          behavior: "smooth",
-        });
-      });
+      scrollToEnd();
     }
   };
 
@@ -168,6 +248,40 @@ export function ChatPanel() {
             ) : null}
           </article>
         ))}
+        {question && pending ? (
+          <section className="chat-options" aria-label={question.prompt}>
+            <header className="chat-options-head">
+              <p className="chat-options-prompt">{question.prompt}</p>
+              <span className="chat-options-step">
+                {pending.index + 1} / {questions.length}
+              </span>
+            </header>
+            <div className="chat-options-grid">
+              {question.options.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={
+                    option.recommended ? "chat-option is-suggested" : "chat-option"
+                  }
+                  onClick={() => choose(option)}
+                  disabled={busy}
+                >
+                  <span className="chat-option-label">{option.label}</span>
+                  <span className="chat-option-detail">{option.detail}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="chat-options-skip"
+              onClick={acceptSuggested}
+              disabled={busy}
+            >
+              Use suggested for the rest
+            </button>
+          </section>
+        ) : null}
         {busy ? <p className="chat-pending">Agent working…</p> : null}
       </div>
 
@@ -222,6 +336,10 @@ export function ChatPanel() {
       </form>
     </aside>
   );
+}
+
+function round(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 function PaperclipIcon() {

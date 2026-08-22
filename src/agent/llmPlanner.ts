@@ -1,6 +1,5 @@
 import type { FloorPlan } from "../types/floorPlan";
-import type { BuildingSpec } from "./buildingSpec";
-import { compileSpec } from "./compileSpec";
+import { normalizeSpec, type BuildingSpec } from "./buildingSpec";
 import type { ModelSettings } from "./modelSettings";
 import { summarizePlan } from "./summarize";
 import type { AgentRole, AgentTurn, BuildBrief, ChatAttachment } from "./types";
@@ -50,23 +49,21 @@ export async function planLlmActions(input: {
       return null;
     }
     const actions = [...(data.actions ?? [])];
-    if (
+    // A proposed building is returned as a draft rather than compiled here, so
+    // the size and glazing can be chosen before anything replaces the plan.
+    const proposal =
       (data.agent === "construct" || data.agent === "extract" || input.role === "construct") &&
       (data.spec || data.brief)
-    ) {
-      const plan = compileSpec(data.spec ?? briefToSpec(data.brief));
-      actions.unshift({
-        type: "replace_plan",
-        plan,
-        note: data.reply ?? `Built ${plan.name}`,
-      });
-    }
+        ? normalizeSpec(data.spec ?? briefToSpec(data.brief))
+        : undefined;
+
     return {
       agent: data.agent ?? input.role,
       planner: "llm",
       model: data.provider ? `${data.provider}/${data.model}` : data.model,
       reply: data.reply ?? "Updated the construction from the model.",
       actions,
+      draftSpec: proposal,
     };
   } catch (error) {
     throw error;

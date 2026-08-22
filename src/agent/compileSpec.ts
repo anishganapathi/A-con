@@ -520,15 +520,16 @@ function openingsFromSpec(
       }
       continue;
     }
+    const glazing = spec.windows;
     if (length > 8) {
       openings.push({
         id: `${prefix}win-${item.id}`,
         wallId: item.id,
         type: "window",
         offsetFromStart: length * 0.35,
-        width: retail ? 2.4 : 1.4,
-        height: retail ? 1.8 : 1.3,
-        sillHeight: retail ? 1.4 : 0.95,
+        width: glazing?.width ?? (retail ? 2.4 : 1.4),
+        height: glazing?.height ?? (retail ? 1.8 : 1.3),
+        sillHeight: glazing?.sillHeight ?? (retail ? 1.4 : 0.95),
       });
     }
   }

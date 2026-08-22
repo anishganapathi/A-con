@@ -8,6 +8,7 @@ import type {
   SurfaceMaterial,
   Wall,
 } from "../types/floorPlan";
+import type { BuildingSpec } from "./buildingSpec";
 
 export type AgentRole = "router" | "construct" | "edit" | "extract" | "explain";
 
@@ -57,6 +58,12 @@ export interface AgentTurn {
   planner: PlannerKind;
   model?: string;
   error?: string;
+  /**
+   * A proposed building awaiting the size and glazing choices. Present instead
+   * of a `replace_plan` action, so nothing is committed until the questions in
+   * `specOptions` have been answered.
+   */
+  draftSpec?: BuildingSpec;
 }
 
 export interface BuildBrief {

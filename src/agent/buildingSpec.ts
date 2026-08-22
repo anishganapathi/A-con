@@ -65,7 +65,15 @@ export interface BuildingSpec {
   massing?: MassingVolume[];
   /** Structural top including spire or mast, in meters. */
   tipHeight?: number;
+  /** Chosen glazing size; overrides the per-typology defaults when set. */
+  windows?: GlazingSpec;
   survey?: SurveySource;
+}
+
+export interface GlazingSpec {
+  width: number;
+  height: number;
+  sillHeight: number;
 }
 
 export interface MassingVolume {
@@ -151,6 +159,7 @@ export function normalizeSpec(raw: Partial<BuildingSpec> | undefined): BuildingS
     grossFloorAreaM2: raw?.grossFloorAreaM2,
     massing,
     tipHeight: normalizeTipHeight(raw?.tipHeight),
+    windows: raw?.windows,
     survey: raw?.survey,
   };
 }
