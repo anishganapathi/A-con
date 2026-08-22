@@ -72,12 +72,14 @@ function AppShell({
       ) : (
         <>
           <Scene options={options} />
-          <ViewControls
-            floorPlan={floorPlan}
-            options={options}
-            onChange={onOptionsChange}
-          />
-          <Inspector />
+          <div className="left-rail">
+            <ViewControls
+              floorPlan={floorPlan}
+              options={options}
+              onChange={onOptionsChange}
+            />
+            <Inspector />
+          </div>
           <ConstructionHud />
           <ChatPanel />
           <div className="sheet-block">

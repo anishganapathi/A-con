@@ -93,10 +93,6 @@ export function loadModelSettings(): ModelSettings {
   }
 }
 
-export function saveModelSettings(settings: ModelSettings): void {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-}
-
 export interface AgentStatus {
   env: Record<ModelProvider, boolean>;
   ollama: { up: boolean; models: string[] };
@@ -117,9 +113,9 @@ export function providerHasServerKey(
 }
 
 /**
- * The provider the panel should open on, so a user who has configured exactly
- * one of these does not have to find it in the dropdown. On-device Ollama comes
- * last because it is the weakest planner.
+ * The provider the chat runs on. There is no picker in the UI, so this follows
+ * whatever the server reports it can serve. On-device Ollama comes last because
+ * it is the weakest planner.
  */
 export function preferredProvider(status: AgentStatus | null): ModelProvider | null {
   if (!status) {
@@ -137,12 +133,4 @@ export function preferredProvider(status: AgentStatus | null): ModelProvider | n
     "ollama",
   ];
   return order.find((provider) => providerHasServerKey(status, provider)) ?? null;
-}
-
-export function hasStoredModelSettings(): boolean {
-  try {
-    return sessionStorage.getItem(STORAGE_KEY) !== null;
-  } catch {
-    return false;
-  }
 }

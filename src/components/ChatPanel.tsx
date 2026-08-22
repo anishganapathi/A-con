@@ -2,37 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentStatus, ModelSettings } from "../agent/modelSettings";
 import {
   PROVIDER_DEFAULTS,
-  hasStoredModelSettings,
   loadModelSettings,
   preferredProvider,
   providerHasServerKey,
-  saveModelSettings,
 } from "../agent/modelSettings";
 import { actionLabels, runConstructionAgent } from "../agent/runAgent";
 import type { ChatAttachment, ChatMessage } from "../agent/types";
 import { useConstruction } from "../editor/ConstructionContext";
 import { useEditor } from "../editor/EditorContext";
 
-const STARTERS = [
-  "Build the Empire State Building",
-  "Build 233 Broadway, Manhattan",
-  "Build a commercial space just like Walmart",
-  "Add a waste pipe to the grocery area",
-];
-
 export function ChatPanel() {
   const { floorPlan, applyAgentActions } = useEditor();
   const { startPlayback } = useConstruction();
   const [settings, setSettings] = useState<ModelSettings>(defaultModelSettingsSafe);
   const [status, setStatus] = useState<AgentStatus | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      agent: "router",
-      text: "Gemini 3.5 Flash on Replicate designs the layout from your prompt — a Walmart-style supercenter is not a house. After it compiles the FloorPlan, watch the live construction sequence.",
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
@@ -55,10 +39,10 @@ export function ChatPanel() {
           return;
         }
         setStatus(next);
-        // Open on whatever is actually configured, unless the user has already
-        // picked a provider for this session.
+        // The provider is not user-selectable, so always follow whatever the
+        // server can actually serve.
         const preferred = preferredProvider(next);
-        if (preferred && !hasStoredModelSettings()) {
+        if (preferred) {
           setSettings((current) =>
             current.provider === preferred
               ? current
@@ -74,17 +58,6 @@ export function ChatPanel() {
       cancelled = true;
     };
   }, []);
-
-  const updateSettings = (patch: Partial<ModelSettings>) => {
-    setSettings((current) => {
-      const next = { ...current, ...patch };
-      if (patch.provider && !patch.model) {
-        next.model = PROVIDER_DEFAULTS[patch.provider].model;
-      }
-      saveModelSettings(next);
-      return next;
-    });
-  };
 
   const send = async (text: string) => {
     const trimmed = text.trim();
@@ -165,48 +138,6 @@ export function ChatPanel() {
         </p>
       </header>
 
-      <div className="chat-model">
-        <select
-          value={settings.provider}
-          onChange={(event) =>
-            updateSettings({
-              provider: event.target.value as ModelSettings["provider"],
-            })
-          }
-        >
-          {Object.entries(PROVIDER_DEFAULTS).map(([id, meta]) => (
-            <option key={id} value={id}>
-              {meta.label}
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          value={settings.model}
-          onChange={(event) => updateSettings({ model: event.target.value })}
-          aria-label="Model id"
-        />
-        {settings.provider === "ollama" ? (
-          <p className="chat-hint">
-            {status?.ollama.up
-              ? `Ollama up · ${status.ollama.models.join(", ") || "no tags"}`
-              : "Ollama is not running on :11434"}
-          </p>
-        ) : (
-          <input
-            type="password"
-            value={settings.apiKey}
-            placeholder={
-              providerHasServerKey(status, settings.provider)
-                ? "Using server env key"
-                : PROVIDER_DEFAULTS[settings.provider].hint
-            }
-            onChange={(event) => updateSettings({ apiKey: event.target.value })}
-            autoComplete="off"
-          />
-        )}
-      </div>
-
       <div className="chat-log" ref={listRef}>
         {messages.map((message) => (
           <article
@@ -240,19 +171,6 @@ export function ChatPanel() {
           </article>
         ))}
         {busy ? <p className="chat-pending">Agent working…</p> : null}
-      </div>
-
-      <div className="chat-starters">
-        {STARTERS.map((starter) => (
-          <button
-            key={starter}
-            type="button"
-            className="chat-starter"
-            onClick={() => send(starter)}
-          >
-            {starter}
-          </button>
-        ))}
       </div>
 
       {files.length > 0 ? (

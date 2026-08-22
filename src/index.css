@@ -1,12 +1,113 @@
 :root {
-  --panel-bg: rgba(250, 249, 246, 0.92);
-  --panel-border: rgba(40, 36, 32, 0.1);
+  /* Opaque fallback for browsers without backdrop-filter. */
+  --panel-bg: rgba(250, 249, 246, 0.96);
   --ink: #1f1c19;
   --muted: #6b645c;
   --accent: #3f5c4f;
   --accent-soft: #e7eee9;
   --sans: "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Liquid glass. The saturate() is what separates this from a plain blur:
+     it pulls colour out of the scene behind the panel the way Apple's
+     materials do. Highlights are inset shadows rather than pseudo-elements so
+     they stay put inside the panels that scroll. */
+  --glass-blur: saturate(180%) blur(24px);
+  --glass-blur-control: saturate(160%) blur(12px);
+  --glass-surface: linear-gradient(
+    158deg,
+    rgba(255, 255, 255, 0.74) 0%,
+    rgba(255, 255, 255, 0.52) 46%,
+    rgba(246, 246, 250, 0.46) 100%
+  );
+  --glass-control: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.66),
+    rgba(255, 255, 255, 0.38)
+  );
+  --glass-border: rgba(255, 255, 255, 0.58);
+  --glass-radius: 18px;
+  --glass-shadow: 0 1px 1px rgba(28, 32, 38, 0.05), 0 10px 24px rgba(28, 32, 38, 0.09),
+    0 28px 56px rgba(28, 32, 38, 0.08);
+  /* Bright top edge plus a dim bottom edge reads as thickness. */
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 rgba(28, 32, 38, 0.06);
+  --glass-edge-soft: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.app-experience {
+  --glass-surface: linear-gradient(
+    158deg,
+    rgba(22, 40, 44, 0.68) 0%,
+    rgba(10, 20, 25, 0.56) 52%,
+    rgba(6, 12, 16, 0.52) 100%
+  );
+  --glass-control: linear-gradient(
+    160deg,
+    rgba(126, 224, 214, 0.14),
+    rgba(6, 14, 18, 0.42)
+  );
+  --glass-border: rgba(126, 224, 214, 0.26);
+  --glass-shadow: 0 2px 6px rgba(0, 0, 0, 0.32), 0 18px 44px rgba(0, 0, 0, 0.46);
+  --glass-edge: inset 0 1px 0 rgba(190, 255, 248, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28);
+  --glass-edge-soft: inset 0 1px 0 rgba(190, 255, 248, 0.12);
+}
+
+.left-rail,
+.chat-panel,
+.sheet-block,
+.mode-switch,
+.construction-hud {
+  border: 1px solid var(--glass-border);
+  border-radius: var(--glass-radius);
+  background: var(--glass-surface);
+  box-shadow: var(--glass-shadow), var(--glass-edge);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+.mode-switch {
+  border-radius: 999px;
+}
+
+/* View controls and the inspector share one pane of glass: the rail draws the
+   material, the two sections inside it are transparent and split by a hairline. */
+.left-rail {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  /* Hugs its content rather than stretching, but never past the viewport —
+     the sections scroll inside instead. */
+  max-height: calc(100% - 38px);
+  /* Clips the sections' scroll overflow to the rounded corners. */
+  overflow: hidden;
+}
+
+.app-experience .left-rail {
+  display: none;
+}
+
+/* Without backdrop-filter the panels would be washed-out translucent boxes
+   over the model, so they fall back to opaque. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .left-rail,
+  .chat-panel,
+  .sheet-block,
+  .mode-switch,
+  .construction-hud {
+    background: var(--panel-bg);
+  }
+
+  .app-experience .chat-panel,
+  .app-experience .mode-switch,
+  .app-experience .construction-hud {
+    background: #0b1418;
+  }
 }
 
 * {
@@ -50,18 +151,7 @@ body,
   display: flex;
   gap: 4px;
   padding: 4px;
-  border: 1px solid var(--panel-border);
-  border-radius: 999px;
-  background: var(--panel-bg);
-  box-shadow: 0 10px 28px rgba(28, 32, 38, 0.14);
   transform: translateX(-50%);
-  backdrop-filter: blur(12px);
-}
-
-.app-experience .mode-switch {
-  border-color: rgba(126, 224, 214, 0.18);
-  background: rgba(8, 14, 18, 0.78);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
 }
 
 .mode-tab {
@@ -77,11 +167,17 @@ body,
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.mode-tab:hover:not(.is-active) {
+  background: var(--glass-control);
 }
 
 .mode-tab.is-active {
   background: #1f1c19;
   color: #f6f3ee;
+  box-shadow: 0 2px 8px rgba(28, 32, 38, 0.28);
 }
 
 .app-experience .mode-tab {
@@ -169,19 +265,10 @@ body,
 }
 
 .view-panel {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  z-index: 20;
-  width: 280px;
-  max-height: calc(52vh - 24px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: 18px 18px 14px;
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  background: var(--panel-bg);
-  box-shadow: 0 12px 40px rgba(28, 32, 38, 0.12);
-  backdrop-filter: blur(12px);
 }
 
 .view-panel-header h1 {
@@ -228,9 +315,10 @@ body,
   appearance: none;
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-control);
+  box-shadow: var(--glass-edge-soft);
   color: var(--ink);
   font: inherit;
   font-weight: 500;
@@ -249,22 +337,26 @@ body,
   width: 100%;
   padding: 8px 10px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--ink);
   font: inherit;
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .toggle:hover {
-  background: rgba(255, 255, 255, 0.7);
+  border-color: var(--glass-border);
+  background: var(--glass-control);
+  box-shadow: var(--glass-edge-soft);
 }
 
 .toggle.is-on {
   background: var(--accent-soft);
   border-color: rgba(63, 92, 79, 0.18);
+  box-shadow: var(--glass-edge-soft);
 }
 
 .toggle-dot {
@@ -302,26 +394,19 @@ body,
 }
 
 .inspector-panel {
-  position: absolute;
-  left: 20px;
-  right: auto;
-  top: auto;
-  bottom: 18px;
-  z-index: 20;
-  width: 280px;
-  max-height: calc(42vh - 12px);
+  flex: 0 0 auto;
+  max-height: 46%;
   overflow: auto;
-  padding: 18px 18px 14px;
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  background: var(--panel-bg);
-  box-shadow: 0 12px 40px rgba(28, 32, 38, 0.12);
-  backdrop-filter: blur(12px);
+  padding: 14px 18px;
+  border-top: 1px solid var(--glass-border);
+  /* Slightly denser than the rail so the inspector reads as its own tray
+     without becoming a second card. */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0));
+  box-shadow: var(--glass-edge-soft);
 }
 
-.view-panel {
-  max-height: calc(52vh - 24px);
-  overflow: auto;
+.app-experience .inspector-panel {
+  background: linear-gradient(180deg, rgba(126, 224, 214, 0.09), rgba(0, 0, 0, 0));
 }
 
 .chat-panel {
@@ -334,23 +419,11 @@ body,
   flex-direction: column;
   width: 340px;
   padding: 16px 16px 12px;
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  background: var(--panel-bg);
-  box-shadow: 0 12px 40px rgba(28, 32, 38, 0.12);
-  backdrop-filter: blur(12px);
 }
 
 .app-experience .chat-panel {
   top: 78px;
-  border-color: rgba(126, 224, 214, 0.18);
-  background: rgba(8, 14, 18, 0.82);
   color: #d7eeea;
-}
-
-.app-experience .inspector-panel,
-.app-experience .view-panel {
-  display: none;
 }
 
 .chat-status {
@@ -368,37 +441,6 @@ body,
   color: #7ee0d6;
 }
 
-.chat-model {
-  display: grid;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.chat-model select,
-.chat-model input {
-  width: 100%;
-  padding: 7px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-}
-
-.app-experience .chat-model select,
-.app-experience .chat-model input {
-  border-color: rgba(126, 224, 214, 0.2);
-  background: rgba(6, 12, 16, 0.8);
-  color: #e8f7f4;
-}
-
-.chat-hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-
 .chat-log {
   display: flex;
   flex: 1;
@@ -411,12 +453,14 @@ body,
 
 .chat-bubble {
   padding: 8px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-control);
+  box-shadow: var(--glass-edge-soft);
 }
 
 .app-experience .chat-bubble {
-  background: rgba(16, 26, 30, 0.9);
+  background: linear-gradient(160deg, rgba(24, 44, 48, 0.6), rgba(10, 20, 25, 0.44));
 }
 
 .chat-bubble.is-user {
@@ -469,30 +513,6 @@ body,
   font-size: 12px;
 }
 
-.chat-starters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.chat-starter {
-  padding: 5px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 999px;
-  background: #fff;
-  color: var(--ink);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.app-experience .chat-starter {
-  border-color: rgba(126, 224, 214, 0.2);
-  background: transparent;
-  color: #d7eeea;
-}
-
 .chat-attached {
   margin: 0 0 6px;
   color: var(--accent);
@@ -510,9 +530,10 @@ body,
   width: 100%;
   min-height: 44px;
   padding: 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-control);
+  box-shadow: var(--glass-edge-soft);
   color: var(--ink);
   font: inherit;
   font-size: 13px;
@@ -520,16 +541,15 @@ body,
 }
 
 .app-experience .chat-form textarea {
-  border-color: rgba(126, 224, 214, 0.2);
-  background: rgba(6, 12, 16, 0.8);
   color: #e8f7f4;
 }
 
 .chat-attach {
   position: relative;
   padding: 8px 8px;
-  border: 1px dashed var(--panel-border);
-  border-radius: 8px;
+  border: 1px dashed var(--glass-border);
+  border-radius: 12px;
+  background: var(--glass-control);
   color: var(--muted);
   font-size: 11px;
   cursor: pointer;
@@ -589,9 +609,10 @@ body,
   width: 100%;
   height: 36px;
   padding: 3px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  background: var(--glass-control);
+  box-shadow: var(--glass-edge-soft);
   cursor: pointer;
 }
 
@@ -605,22 +626,52 @@ body,
 .btn-danger,
 .btn-ghost {
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: var(--glass-edge-soft);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.btn-danger:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--glass-edge-soft), 0 6px 16px rgba(28, 32, 38, 0.14);
+}
+
+.btn-danger:active,
+.btn-ghost:active {
+  transform: translateY(0);
 }
 
 .btn-danger {
-  border: 1px solid rgba(148, 54, 42, 0.25);
-  background: #f6e7e4;
+  border: 1px solid rgba(148, 54, 42, 0.28);
+  background: linear-gradient(160deg, rgba(250, 232, 229, 0.86), rgba(240, 210, 204, 0.62));
   color: #7a2e24;
 }
 
 .btn-ghost {
-  border: 1px solid var(--panel-border);
-  background: #fff;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-control);
   color: var(--ink);
+}
+
+.app-experience .btn-ghost {
+  color: #d7eeea;
+}
+
+.toggle:focus-visible,
+.btn-ghost:focus-visible,
+.btn-danger:focus-visible,
+.mode-tab:focus-visible,
+.chat-form textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-experience :focus-visible {
+  outline-color: #7ee0d6;
 }
 
 .room-label.is-selected {
@@ -705,9 +756,6 @@ body,
   gap: 2px;
   min-width: 280px;
   padding: 10px 14px 11px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  box-shadow: 0 8px 24px rgba(28, 32, 38, 0.1);
 }
 
 .sheet-block .sheet-no {
@@ -734,16 +782,10 @@ body,
   z-index: 28;
   width: min(420px, calc(100vw - 400px));
   padding: 10px 14px 12px;
-  border: 1px solid var(--panel-border);
-  border-radius: 12px;
-  background: var(--panel-bg);
-  box-shadow: 0 10px 28px rgba(28, 32, 38, 0.14);
   transform: translateX(-50%);
 }
 
 .app-experience .construction-hud {
-  border-color: rgba(126, 224, 214, 0.18);
-  background: rgba(8, 14, 18, 0.82);
   color: #d7eeea;
 }
 
