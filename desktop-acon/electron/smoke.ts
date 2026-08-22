@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { app, type BrowserWindow } from "electron";
 
 const PROBE = `(async () => {
@@ -19,6 +20,7 @@ const PROBE = `(async () => {
     renderer: gl ? gl.getParameter(gl.VERSION) : null,
     chat: Boolean(document.querySelector(".chat-panel")),
     controls: Boolean(document.querySelector(".left-rail")),
+    finishes: document.querySelectorAll(".finish-swatch").length,
     api: status,
     title: document.title,
   };
@@ -68,6 +70,7 @@ async function report(window: BrowserWindow, problems: string[], notes: string[]
       ["webgl", "no WebGL context"],
       ["chat", "chat panel missing"],
       ["controls", "view controls missing"],
+      ["finishes", "material finish swatches missing"],
     ] as const) {
       if (!probe[key]) {
         problems.push(label);
@@ -94,8 +97,23 @@ async function report(window: BrowserWindow, problems: string[], notes: string[]
     app.exit(1);
     return;
   }
+  await capture(window);
   console.log("smoke: OK");
   app.exit(0);
+}
+
+/**
+ * Optional frame grab (ACON_SMOKE_SHOT=<path>) so a headless run can be looked
+ * at afterwards. The probe proves the panels exist; only a picture shows layout.
+ */
+async function capture(window: BrowserWindow) {
+  const target = process.env.ACON_SMOKE_SHOT;
+  if (!target) {
+    return;
+  }
+  const image = await window.webContents.capturePage();
+  await writeFile(target, image.toPNG());
+  console.log(`smoke: wrote ${target}`);
 }
 
 /**

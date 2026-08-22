@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BuildingFinishes } from "./components/BuildingFinishes";
 import { ChatPanel } from "./components/ChatPanel";
 import { ConstructionHud } from "./components/ConstructionHud";
 import { ExperienceScene } from "./components/ExperienceScene";
@@ -78,12 +79,17 @@ function AppShell({
           <>
             <Scene options={options} />
             <div className="left-rail">
-              <ViewControls
-                floorPlan={floorPlan}
-                options={options}
-                onChange={onOptionsChange}
-              />
-              <Inspector />
+              {/* One scroller for the whole rail: the sections keep their natural
+                  height instead of competing for a fixed budget. */}
+              <div className="rail-scroll">
+                <ViewControls
+                  floorPlan={floorPlan}
+                  options={options}
+                  onChange={onOptionsChange}
+                />
+                <BuildingFinishes />
+                <Inspector />
+              </div>
             </div>
             <ConstructionHud />
             <ChatPanel />

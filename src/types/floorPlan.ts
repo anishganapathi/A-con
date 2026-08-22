@@ -95,6 +95,7 @@ export interface Roof {
   overhang: number;
   /** When false the live model keeps its roof data but does not draw it. */
   visible?: boolean;
+  material?: SurfaceMaterial;
 }
 
 export interface DrawingSource {

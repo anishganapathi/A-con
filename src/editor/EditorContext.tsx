@@ -22,6 +22,8 @@ import type {
 } from "../types/floorPlan";
 import type { AgentAction } from "../agent/types";
 import { applyAgentAction } from "../agent/applyAction";
+import { applyPresetToPlan } from "../materials/applyPreset";
+import type { MaterialPreset } from "../materials/presets";
 import {
   findInPlan,
   patchElectricalInPlan,
@@ -71,6 +73,7 @@ interface EditorContextValue {
   redo: () => void;
   resetPlan: () => void;
   replacePlan: (next: FloorPlan) => void;
+  applyFinish: (preset: MaterialPreset) => void;
   applyAgentActions: (actions: AgentAction[]) => string[];
 }
 
@@ -247,6 +250,15 @@ export function EditorProvider({ floorId, children }: EditorProviderProps) {
     }));
   }, []);
 
+  /** A finish is a building-wide decision, so it is one undoable step. */
+  const applyFinish = useCallback(
+    (preset: MaterialPreset) => {
+      lastPushAt.current = 0;
+      applyEdit((plan) => applyPresetToPlan(plan, preset), false);
+    },
+    [applyEdit],
+  );
+
   const applyAgentActions = useCallback((actions: AgentAction[]) => {
     if (actions.length === 0) {
       return [];
@@ -351,9 +363,11 @@ export function EditorProvider({ floorId, children }: EditorProviderProps) {
       redo,
       resetPlan,
       replacePlan,
+      applyFinish,
       applyAgentActions,
     }),
     [
+      applyFinish,
       floor,
       floorId,
       floorPlan,

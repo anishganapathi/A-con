@@ -102,7 +102,9 @@ function serveStatic(res: ServerResponse, root: string, url: string, headOnly: b
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
         "font-src 'self' data:",
-        "connect-src 'self'",
+        // data: covers the bundled HDRI environment map, which the loader reads
+        // as a data URI rather than a file.
+        "connect-src 'self' data:",
         "worker-src 'self' blob:",
         "object-src 'none'",
         "base-uri 'none'",

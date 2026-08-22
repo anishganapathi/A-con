@@ -7,6 +7,13 @@ import type {
   Wall,
 } from "../types/floorPlan";
 
+export const DEFAULT_ROOF_MATERIAL: SurfaceMaterial = {
+  color: "#5b6570",
+  roughness: 0.38,
+  metalness: 0.62,
+  opacity: 1,
+};
+
 export const WALL_TYPE_COLORS: Record<Wall["type"], string> = {
   exterior: "#d7cec0",
   interior: "#f0ebe3",
@@ -89,6 +96,21 @@ export function defaultOpeningMaterial(opening: Opening): SurfaceMaterial {
     metalness: isWindow ? 0.15 : 0.05,
     opacity: isWindow ? 0.32 : 0.88,
   };
+}
+
+/**
+ * True while a surface still wears the colour it was born with. Plans routinely
+ * carry an explicit material that is simply the stock one, so the presence of a
+ * material says nothing about whether anyone actually chose a finish.
+ */
+export function isStockMaterial(
+  stored: SurfaceMaterial | undefined,
+  fallback: SurfaceMaterial,
+): boolean {
+  if (!stored) {
+    return true;
+  }
+  return stored.color.toLowerCase() === fallback.color.toLowerCase();
 }
 
 export function resolveMaterial(
